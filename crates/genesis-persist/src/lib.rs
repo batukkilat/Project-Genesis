@@ -6,12 +6,13 @@
 //!
 //! ```text
 //! magic            [u8; 4]  = b"GENS"
-//! format_version   u32      = 2
+//! format_version   u32      = 3
 //! engine_version   u16 len + utf-8 bytes (informational)
 //! tick             u64
 //! rng_state        u64
 //! rng_gamma        u64
 //! next_id          u64
+//! stream_seed      u64      (v3: derived-stream base)
 //! dt               f32
 //! world_width      f32
 //! world_height     f32
@@ -19,6 +20,8 @@
 //! core_frac        f32
 //! repulsion        f32
 //! attraction       f32
+//! rule_count       u32      (v3: interaction rules joined replay identity)
+//! rules            rule_count * 17 f32 (CompiledRule::fields order)
 //! particle_count   u64
 //! particles        count * (id u64, pos f32*2, vel f32*2, matter f32,
 //!                           energy f32, information f32), sorted by id
@@ -29,10 +32,11 @@ use std::fmt;
 use std::io::{Read, Write};
 use std::path::Path;
 
+use genesis_sim::interact::CompiledRule;
 use genesis_sim::snapshot::{ParticleSnap, WorldSnapshot};
 
 pub const MAGIC: [u8; 4] = *b"GENS";
-pub const FORMAT_VERSION: u32 = 2;
+pub const FORMAT_VERSION: u32 = 3;
 
 #[derive(Debug)]
 pub enum SaveError {
@@ -79,6 +83,7 @@ pub fn save_to_writer(snap: &WorldSnapshot, w: &mut impl Write) -> Result<(), Sa
     w.write_all(&snap.rng_state.to_le_bytes())?;
     w.write_all(&snap.rng_gamma.to_le_bytes())?;
     w.write_all(&snap.next_id.to_le_bytes())?;
+    w.write_all(&snap.stream_seed.to_le_bytes())?;
     w.write_all(&snap.dt.to_le_bytes())?;
     w.write_all(&snap.world_width.to_le_bytes())?;
     w.write_all(&snap.world_height.to_le_bytes())?;
@@ -86,6 +91,13 @@ pub fn save_to_writer(snap: &WorldSnapshot, w: &mut impl Write) -> Result<(), Sa
     w.write_all(&snap.core_frac.to_le_bytes())?;
     w.write_all(&snap.repulsion.to_le_bytes())?;
     w.write_all(&snap.attraction.to_le_bytes())?;
+
+    w.write_all(&(snap.rules.len() as u32).to_le_bytes())?;
+    for rule in &snap.rules {
+        for v in rule.fields() {
+            w.write_all(&v.to_le_bytes())?;
+        }
+    }
 
     w.write_all(&(snap.particles.len() as u64).to_le_bytes())?;
     for p in &snap.particles {
@@ -123,6 +135,7 @@ pub fn load_from_reader(r: &mut impl Read) -> Result<WorldSnapshot, SaveError> {
     let rng_state = read_u64(r)?;
     let rng_gamma = read_u64(r)?;
     let next_id = read_u64(r)?;
+    let stream_seed = read_u64(r)?;
     let dt = read_f32(r)?;
     let world_width = read_f32(r)?;
     let world_height = read_f32(r)?;
@@ -130,6 +143,16 @@ pub fn load_from_reader(r: &mut impl Read) -> Result<WorldSnapshot, SaveError> {
     let core_frac = read_f32(r)?;
     let repulsion = read_f32(r)?;
     let attraction = read_f32(r)?;
+
+    let rule_count = read_u32(r)?;
+    let mut rules = Vec::with_capacity(rule_count.min(1 << 20) as usize);
+    for _ in 0..rule_count {
+        let mut fields = [0.0f32; 17];
+        for f in &mut fields {
+            *f = read_f32(r)?;
+        }
+        rules.push(CompiledRule::from_fields(fields));
+    }
 
     let count = read_u64(r)?;
     let mut particles = Vec::with_capacity(count.min(1 << 24) as usize);
@@ -151,6 +174,7 @@ pub fn load_from_reader(r: &mut impl Read) -> Result<WorldSnapshot, SaveError> {
         rng_state,
         rng_gamma,
         next_id,
+        stream_seed,
         dt,
         world_width,
         world_height,
@@ -158,6 +182,7 @@ pub fn load_from_reader(r: &mut impl Read) -> Result<WorldSnapshot, SaveError> {
         core_frac,
         repulsion,
         attraction,
+        rules,
         particles,
     };
 

@@ -9,6 +9,7 @@
 //! parallel iteration.
 
 pub mod grid;
+pub mod interact;
 pub mod physics;
 pub mod snapshot;
 pub mod store;
@@ -18,6 +19,7 @@ use genesis_config::{PhysicsParams, SimConfig};
 use genesis_core::DetRng;
 
 use grid::GridGeom;
+use interact::RuleSet;
 use snapshot::{ParticleSnap, WorldSnapshot};
 use store::ParticleStore;
 
@@ -45,16 +47,32 @@ pub struct Params {
 #[derive(Resource, Debug, Clone, Copy)]
 pub struct NextId(pub u64);
 
+/// Base seed for order-free derived RNG streams (`DetRng::derive`). Drawn
+/// once from the master stream at creation; part of replay identity.
+#[derive(Resource, Debug, Clone, Copy)]
+pub struct StreamSeed(pub u64);
+
 fn advance_tick(mut tick: ResMut<Tick>) {
     tick.0 += 1;
 }
 
-/// One physics step: canonicalize layout, compute kernel forces, integrate.
-/// Layout is re-derived from state at the start of every tick, so force
-/// accumulation order is a pure function of state (see `store.rs`).
-fn physics_step(mut store: ResMut<ParticleStore>, geom: Res<GridGeom>, params: Res<Params>) {
+/// One simulation step: canonicalize layout, compute kernel forces, run
+/// discrete interactions, integrate. Layout is re-derived from state at the
+/// start of every tick, so iteration order is a pure function of state
+/// (see `store.rs`). Interactions run before integration because intents
+/// hold layout indices, which position changes would not invalidate — but
+/// the pair distances must match the positions the conditions saw.
+fn sim_step(
+    mut store: ResMut<ParticleStore>,
+    geom: Res<GridGeom>,
+    params: Res<Params>,
+    rules: Res<RuleSet>,
+    stream_seed: Res<StreamSeed>,
+    tick: Res<Tick>,
+) {
     store.canonicalize(&geom);
     physics::forces(&mut store, &geom, &params.physics);
+    interact::apply(&mut store, &geom, &rules, stream_seed.0, tick.0);
     physics::integrate(&mut store, &geom, params.dt);
 }
 
@@ -64,12 +82,18 @@ pub struct Simulation {
 }
 
 impl Simulation {
-    /// Fresh simulation: spawns `config.particle_count` particles using RNG
-    /// streams derived from `config.seed`. The same validated config always
-    /// produces the same world.
+    /// Fresh simulation with no interaction rules.
     pub fn new(config: &SimConfig) -> Self {
+        Self::with_rules(config, RuleSet::default())
+    }
+
+    /// Fresh simulation: spawns `config.particle_count` particles using RNG
+    /// streams derived from `config.seed`. The same validated config and
+    /// rule set always produce the same world.
+    pub fn with_rules(config: &SimConfig, rules: RuleSet) -> Self {
         let mut master = DetRng::new(config.seed);
         let mut spawn_rng = master.split();
+        let stream_seed = master.next_u64();
 
         let params = Params {
             dt: config.dt(),
@@ -105,6 +129,8 @@ impl Simulation {
             Tick(0),
             SimRng(master),
             NextId(config.particle_count),
+            StreamSeed(stream_seed),
+            rules,
             store,
         );
         tracing::info!(
@@ -148,17 +174,25 @@ impl Simulation {
             Tick(snap.tick),
             SimRng(DetRng::from_parts(snap.rng_state, snap.rng_gamma)),
             NextId(snap.next_id),
+            StreamSeed(snap.stream_seed),
+            RuleSet {
+                rules: snap.rules.clone(),
+            },
             store,
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn assemble(
         params: Params,
         tick: Tick,
         rng: SimRng,
         next_id: NextId,
+        stream_seed: StreamSeed,
+        rules: RuleSet,
         store: ParticleStore,
     ) -> Self {
+        rules.assert_valid(params.physics.interaction_radius);
         let mut world = World::new();
         world.insert_resource(GridGeom::new(
             params.world_width,
@@ -169,12 +203,12 @@ impl Simulation {
         world.insert_resource(tick);
         world.insert_resource(rng);
         world.insert_resource(next_id);
+        world.insert_resource(stream_seed);
+        world.insert_resource(rules);
         world.insert_resource(store);
 
         let mut schedule = Schedule::default();
-        // Phase 2: physics, then time. The interaction system (Phase 3)
-        // slots between them.
-        schedule.add_systems((physics_step, advance_tick).chain());
+        schedule.add_systems((sim_step, advance_tick).chain());
 
         Simulation { world, schedule }
     }
@@ -198,6 +232,8 @@ impl Simulation {
         let tick = self.world.resource::<Tick>().0;
         let (rng_state, rng_gamma) = self.world.resource::<SimRng>().0.to_parts();
         let next_id = self.world.resource::<NextId>().0;
+        let stream_seed = self.world.resource::<StreamSeed>().0;
+        let rules = self.world.resource::<RuleSet>().rules.clone();
         let store = self.world.resource::<ParticleStore>();
 
         let mut particles: Vec<ParticleSnap> = (0..store.len())
@@ -219,6 +255,7 @@ impl Simulation {
             rng_state,
             rng_gamma,
             next_id,
+            stream_seed,
             dt: params.dt,
             world_width: params.world_width,
             world_height: params.world_height,
@@ -226,6 +263,7 @@ impl Simulation {
             core_frac: params.physics.core_frac,
             repulsion: params.physics.repulsion,
             attraction: params.physics.attraction,
+            rules,
             particles,
         }
     }
@@ -242,13 +280,17 @@ mod tests {
     use super::*;
 
     fn test_config() -> SimConfig {
-        SimConfig {
+        let mut config = SimConfig {
             seed: 42,
             particle_count: 500,
             world_width: 256.0,
             world_height: 256.0,
             ..Default::default()
-        }
+        };
+        // Give particles information so its conservation is actually
+        // exercised, not vacuously true on all-zeros.
+        config.initial.information = genesis_config::Range::new(0.0, 1.0);
+        config
     }
 
     #[test]
@@ -336,15 +378,31 @@ mod tests {
         assert_eq!(sim.state_hash(), restored.state_hash());
     }
 
+    fn test_rules() -> RuleSet {
+        RuleSet {
+            rules: vec![interact::CompiledRule {
+                radius: 8.0,
+                self_cond: interact::QuantityCondition::ANY,
+                other_cond: interact::QuantityCondition::ANY,
+                probability: 0.05,
+                transfer_matter: 0.01,
+                transfer_energy: 0.05,
+                transfer_information: 0.01,
+            }],
+        }
+    }
+
     #[test]
     fn thread_count_does_not_change_hash() {
+        // Runs with interactions active — covers both the physics passes and
+        // the interaction collect/commit under different thread counts.
         let run = |threads: usize| {
             let pool = rayon::ThreadPoolBuilder::new()
                 .num_threads(threads)
                 .build()
                 .unwrap();
             pool.install(|| {
-                let mut sim = Simulation::new(&test_config());
+                let mut sim = Simulation::with_rules(&test_config(), test_rules());
                 for _ in 0..100 {
                     sim.tick();
                 }
@@ -357,6 +415,71 @@ mod tests {
             single, multi,
             "thread count changed the simulation — determinism broken"
         );
+    }
+
+    #[test]
+    fn interactions_conserve_totals() {
+        // Transfers subtract and add in separate f32 roundings, so totals are
+        // conserved to rounding, not bit-exactly — hence the tolerance.
+        let mut sim = Simulation::with_rules(&test_config(), test_rules());
+        let totals = |s: &WorldSnapshot| {
+            let m: f64 = s.particles.iter().map(|p| p.matter as f64).sum();
+            let e: f64 = s.particles.iter().map(|p| p.energy as f64).sum();
+            let i: f64 = s.particles.iter().map(|p| p.information as f64).sum();
+            (m, e, i)
+        };
+        let (m0, e0, i0) = totals(&sim.snapshot());
+        for _ in 0..300 {
+            sim.tick();
+        }
+        let (m1, e1, i1) = totals(&sim.snapshot());
+        assert!(((m1 - m0) / m0).abs() < 1e-4, "matter leaked: {m0} -> {m1}");
+        assert!(
+            ((e1 - e0) / e0.max(1.0)).abs() < 1e-4,
+            "energy leaked: {e0} -> {e1}"
+        );
+        assert!(
+            ((i1 - i0) / i0.max(1.0)).abs() < 1e-4,
+            "information leaked: {i0} -> {i1}"
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "radius")]
+    fn oversized_rule_radius_is_rejected() {
+        // Rule radius beyond the grid cell would silently miss pairs; the
+        // assembly-time validation must refuse it.
+        let mut rules = test_rules();
+        rules.rules[0].radius = 100.0;
+        let _ = Simulation::with_rules(&test_config(), rules);
+    }
+
+    #[test]
+    fn rules_are_replay_identity() {
+        let bare = Simulation::new(&test_config());
+        let ruled = Simulation::with_rules(&test_config(), test_rules());
+        assert_ne!(
+            bare.state_hash(),
+            ruled.state_hash(),
+            "rule set must be part of replay identity from tick 0"
+        );
+    }
+
+    #[test]
+    fn resume_with_rules_matches_uninterrupted() {
+        let mut a = Simulation::with_rules(&test_config(), test_rules());
+        let mut b = Simulation::with_rules(&test_config(), test_rules());
+        for _ in 0..20 {
+            a.tick();
+            b.tick();
+        }
+        let mut resumed = Simulation::from_snapshot(&b.snapshot());
+        drop(b);
+        for _ in 0..50 {
+            a.tick();
+            resumed.tick();
+        }
+        assert_eq!(a.state_hash(), resumed.state_hash());
     }
 
     #[test]

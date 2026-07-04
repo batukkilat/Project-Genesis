@@ -12,6 +12,9 @@ Settled — do not re-litigate without cause:
 - **Create/destroy:** interactions may create and destroy particles (split, merge, emit, absorb); matter+energy conserved per event; ids never reused.
 - **Time:** fixed dt forever; time warp = more ticks per wall second, never a bigger dt.
 - **Save format:** hand-rolled versioned binary (`GENS`, format v1) — no serialization dependency in the format.
+- **Information semantics (2026-07-05):** condition-gate + lossy copy. Rule conditions can read it; interactions can copy it between particles at an energy cost with configurable noise; not conserved (creatable by paying energy, lost by decay). Self-replication becomes possible, never built-in.
+- **Rule authoring (2026-07-05):** RON data schema — declarative conditions and a fixed action vocabulary, compiled and validated at load, whole pack hashed into replay identity. No scripting in the hot loop.
+- **Bond storage (2026-07-05):** SoA edge list keyed by stable ids (a < b, canonically sorted) as save/hash truth + per-tick CSR adjacency mirror for iteration + lookup-only id→index hash map. See docs/research/bond-storage.md.
 
 ## Phase 1 — Foundation (done, v0.1.0)
 
