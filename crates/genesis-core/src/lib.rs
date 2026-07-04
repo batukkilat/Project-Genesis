@@ -6,6 +6,7 @@
 
 pub mod hash;
 pub mod rng;
+pub mod torus;
 pub mod vec2;
 
 pub use hash::StateHasher;

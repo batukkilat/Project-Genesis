@@ -24,10 +24,11 @@ An Artificial Life Research Sandbox: the emergence of complexity from first prin
 ```sh
 cargo test                                  # all unit + integration tests
 cargo run -p genesis-headless --release -- verify --ticks 1000
-cargo run -p genesis-headless --release -- bench --particles 1000000 --ticks 600
+cargo run -p genesis-headless --release -- bench --particles 1000000 --ticks 120
+cargo run -p genesis-headless --release -- bench --particles 1000000 --ticks 120 --threads 1
 cargo run -p genesis-headless --release -- init-config genesis.ron
 cargo run -p genesis-headless --release -- run --config genesis.ron --ticks 5000 --save world.gens
 cargo run -p genesis-headless --release -- run --load world.gens --ticks 5000
 ```
 
-Determinism contract: same build + same platform + same seed/config/actions ⇒ identical state hashes, verified by `genesis verify` and the test suite.
+Determinism contract: same build + same platform + same seed/config/actions ⇒ identical state hashes — regardless of thread count. Verified by `genesis verify` (two fresh runs + save/resume + single-thread, all compared) and the test suite. Current numbers: [BASELINES.md](BASELINES.md).

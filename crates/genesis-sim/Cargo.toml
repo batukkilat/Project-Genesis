@@ -7,4 +7,5 @@ edition.workspace = true
 genesis-core = { workspace = true }
 genesis-config = { workspace = true }
 bevy_ecs = { workspace = true }
+rayon = { workspace = true }
 tracing = { workspace = true }

@@ -9,7 +9,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 
 [workspace.dependencies]
@@ -19,6 +19,7 @@ genesis-config = { path = "crates/genesis-config" }
 genesis-persist = { path = "crates/genesis-persist" }
 
 bevy_ecs = "0.19"
+rayon = "1"
 serde = { version = "1", features = ["derive"] }
 ron = "0.12"
 tracing = "0.1"

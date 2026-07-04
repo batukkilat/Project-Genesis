@@ -6,7 +6,7 @@
 //!
 //! ```text
 //! magic            [u8; 4]  = b"GENS"
-//! format_version   u32      = 1
+//! format_version   u32      = 2
 //! engine_version   u16 len + utf-8 bytes (informational)
 //! tick             u64
 //! rng_state        u64
@@ -15,6 +15,10 @@
 //! dt               f32
 //! world_width      f32
 //! world_height     f32
+//! interaction_radius f32    (v2: physics params joined replay identity)
+//! core_frac        f32
+//! repulsion        f32
+//! attraction       f32
 //! particle_count   u64
 //! particles        count * (id u64, pos f32*2, vel f32*2, matter f32,
 //!                           energy f32, information f32), sorted by id
@@ -28,7 +32,7 @@ use std::path::Path;
 use genesis_sim::snapshot::{ParticleSnap, WorldSnapshot};
 
 pub const MAGIC: [u8; 4] = *b"GENS";
-pub const FORMAT_VERSION: u32 = 1;
+pub const FORMAT_VERSION: u32 = 2;
 
 #[derive(Debug)]
 pub enum SaveError {
@@ -78,6 +82,10 @@ pub fn save_to_writer(snap: &WorldSnapshot, w: &mut impl Write) -> Result<(), Sa
     w.write_all(&snap.dt.to_le_bytes())?;
     w.write_all(&snap.world_width.to_le_bytes())?;
     w.write_all(&snap.world_height.to_le_bytes())?;
+    w.write_all(&snap.interaction_radius.to_le_bytes())?;
+    w.write_all(&snap.core_frac.to_le_bytes())?;
+    w.write_all(&snap.repulsion.to_le_bytes())?;
+    w.write_all(&snap.attraction.to_le_bytes())?;
 
     w.write_all(&(snap.particles.len() as u64).to_le_bytes())?;
     for p in &snap.particles {
@@ -118,6 +126,10 @@ pub fn load_from_reader(r: &mut impl Read) -> Result<WorldSnapshot, SaveError> {
     let dt = read_f32(r)?;
     let world_width = read_f32(r)?;
     let world_height = read_f32(r)?;
+    let interaction_radius = read_f32(r)?;
+    let core_frac = read_f32(r)?;
+    let repulsion = read_f32(r)?;
+    let attraction = read_f32(r)?;
 
     let count = read_u64(r)?;
     let mut particles = Vec::with_capacity(count.min(1 << 24) as usize);
@@ -142,6 +154,10 @@ pub fn load_from_reader(r: &mut impl Read) -> Result<WorldSnapshot, SaveError> {
         dt,
         world_width,
         world_height,
+        interaction_radius,
+        core_frac,
+        repulsion,
+        attraction,
         particles,
     };
 

@@ -36,9 +36,13 @@ enum Command {
         /// Print the state hash every N ticks.
         #[arg(long)]
         hash_every: Option<u64>,
+        /// Worker threads (0 = all cores). Never changes results.
+        #[arg(long, default_value_t = 0)]
+        threads: usize,
     },
-    /// Verify determinism: two fresh runs, plus a save/resume run, must all
-    /// produce the same final state hash. Exits non-zero on divergence.
+    /// Verify determinism: two fresh runs, a save/resume run, and a
+    /// single-threaded run must all produce the same final state hash.
+    /// Exits non-zero on divergence.
     Verify {
         #[arg(long)]
         config: Option<PathBuf>,
@@ -49,8 +53,11 @@ enum Command {
     Bench {
         #[arg(long, default_value_t = 1_000_000)]
         particles: u64,
-        #[arg(long, default_value_t = 600)]
+        #[arg(long, default_value_t = 120)]
         ticks: u64,
+        /// Worker threads (0 = all cores). Never changes results.
+        #[arg(long, default_value_t = 0)]
+        threads: usize,
     },
     /// Write a default config file to the given path.
     InitConfig { path: PathBuf },
@@ -80,6 +87,17 @@ fn load_config(path: &Option<PathBuf>) -> Result<SimConfig, Box<dyn std::error::
     }
 }
 
+/// Size the global rayon pool (0 = rayon's default, all cores). Thread count
+/// is a scheduling knob only — it never appears in replay identity.
+fn init_thread_pool(threads: usize) -> Result<(), Box<dyn std::error::Error>> {
+    if threads > 0 {
+        rayon::ThreadPoolBuilder::new()
+            .num_threads(threads)
+            .build_global()?;
+    }
+    Ok(())
+}
+
 fn run(cli: Cli) -> Result<ExitCode, Box<dyn std::error::Error>> {
     match cli.command {
         Command::Run {
@@ -88,7 +106,9 @@ fn run(cli: Cli) -> Result<ExitCode, Box<dyn std::error::Error>> {
             load,
             save,
             hash_every,
+            threads,
         } => {
+            init_thread_pool(threads)?;
             let mut sim = match load {
                 Some(path) => Simulation::from_snapshot(&genesis_persist::load_from_file(&path)?),
                 None => Simulation::new(&load_config(&config)?),
@@ -138,9 +158,13 @@ fn run(cli: Cli) -> Result<ExitCode, Box<dyn std::error::Error>> {
             let (hash_a, _) = run_hash(ticks);
             let (hash_b, _) = run_hash(ticks);
 
+            // Single-threaded run: thread count must never change results.
+            let single_pool = rayon::ThreadPoolBuilder::new().num_threads(1).build()?;
+            let (hash_s, _) = single_pool.install(|| run_hash(ticks));
+
             // Save/resume path: run half, save, reload, finish.
             let half = ticks / 2;
-            let (_, mut sim_c) = run_hash(half);
+            let (_, sim_c) = run_hash(half);
             let mut bytes = Vec::new();
             genesis_persist::save_to_writer(&sim_c.snapshot(), &mut bytes)?;
             drop(sim_c);
@@ -155,8 +179,9 @@ fn run(cli: Cli) -> Result<ExitCode, Box<dyn std::error::Error>> {
             println!("run A        {hash_a:#018x}");
             println!("run B        {hash_b:#018x}");
             println!("save/resume  {hash_c:#018x}");
+            println!("1-thread     {hash_s:#018x}");
 
-            if hash_a == hash_b && hash_a == hash_c {
+            if hash_a == hash_b && hash_a == hash_c && hash_a == hash_s {
                 println!("DETERMINISTIC over {ticks} ticks");
                 Ok(ExitCode::SUCCESS)
             } else {
@@ -165,11 +190,17 @@ fn run(cli: Cli) -> Result<ExitCode, Box<dyn std::error::Error>> {
             }
         }
 
-        Command::Bench { particles, ticks } => {
+        Command::Bench {
+            particles,
+            ticks,
+            threads,
+        } => {
+            init_thread_pool(threads)?;
             let config = SimConfig {
                 particle_count: particles,
                 ..Default::default()
             };
+            println!("threads      {}", rayon::current_num_threads());
 
             let start = Instant::now();
             let mut sim = Simulation::new(&config);

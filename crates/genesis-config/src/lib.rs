@@ -31,6 +31,36 @@ pub struct InitialRanges {
     pub speed: Range,
 }
 
+/// Parameters of the generic short-range pairwise force kernel (Phase 2).
+///
+/// The kernel is Particle-Life-shaped: a linear repulsion core for
+/// `r < core_frac * interaction_radius`, then a triangular attraction band
+/// out to `interaction_radius`. Repulsion-only (attraction = 0) gives a gas;
+/// adding attraction gives clustering, droplets, lattices — all from config.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct PhysicsParams {
+    /// Force cutoff distance; also the spatial grid cell size.
+    pub interaction_radius: f32,
+    /// Fraction of `interaction_radius` occupied by the repulsion core (0..1).
+    pub core_frac: f32,
+    /// Peak repulsion force magnitude (at r = 0).
+    pub repulsion: f32,
+    /// Peak attraction force magnitude (at the middle of the attraction band).
+    pub attraction: f32,
+}
+
+impl Default for PhysicsParams {
+    fn default() -> Self {
+        PhysicsParams {
+            interaction_radius: 8.0,
+            core_frac: 0.4,
+            repulsion: 40.0,
+            attraction: 5.0,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct SimConfig {
@@ -42,6 +72,7 @@ pub struct SimConfig {
     /// Fixed timestep: simulation ticks per simulated second.
     pub ticks_per_second: u32,
     pub initial: InitialRanges,
+    pub physics: PhysicsParams,
 }
 
 impl Default for SimConfig {
@@ -56,8 +87,9 @@ impl Default for SimConfig {
                 matter: Range::new(0.1, 1.0),
                 energy: Range::new(0.0, 1.0),
                 information: Range::new(0.0, 0.0),
-                speed: Range::new(0.0, 0.0),
+                speed: Range::new(0.0, 2.0),
             },
+            physics: PhysicsParams::default(),
         }
     }
 }
@@ -131,8 +163,35 @@ impl SimConfig {
         finite_range("energy", self.initial.energy)?;
         finite_range("information", self.initial.information)?;
         finite_range("speed", self.initial.speed)?;
-        if self.initial.matter.lo < 0.0 {
-            return Err(ConfigError::Invalid("matter cannot be negative".into()));
+        if self.initial.matter.lo <= 0.0 {
+            return Err(ConfigError::Invalid(
+                "matter must be positive (it is the inertial mass)".into(),
+            ));
+        }
+
+        let p = &self.physics;
+        if p.interaction_radius <= 0.0 || !p.interaction_radius.is_finite() {
+            return Err(ConfigError::Invalid(
+                "interaction_radius must be positive".into(),
+            ));
+        }
+        if !(0.0..1.0).contains(&p.core_frac) || p.core_frac == 0.0 {
+            return Err(ConfigError::Invalid("core_frac must be in (0, 1)".into()));
+        }
+        if p.repulsion < 0.0 || !p.repulsion.is_finite() {
+            return Err(ConfigError::Invalid("repulsion must be >= 0".into()));
+        }
+        if p.attraction < 0.0 || !p.attraction.is_finite() {
+            return Err(ConfigError::Invalid("attraction must be >= 0".into()));
+        }
+        // The 3x3 neighbor-cell sweep double-counts cells unless the grid is
+        // at least 3 cells in each axis.
+        if (self.world_width / p.interaction_radius).floor() < 3.0
+            || (self.world_height / p.interaction_radius).floor() < 3.0
+        {
+            return Err(ConfigError::Invalid(
+                "world must be at least 3 interaction radii in each axis".into(),
+            ));
         }
         Ok(())
     }
@@ -184,6 +243,24 @@ mod tests {
         let mut config = SimConfig::default();
         config.initial.energy = Range::new(2.0, 1.0);
         assert!(config.validate().is_err());
+
+        let mut config = SimConfig::default();
+        config.initial.matter = Range::new(0.0, 1.0);
+        assert!(
+            config.validate().is_err(),
+            "zero matter = zero mass, must be rejected"
+        );
+
+        let mut config = SimConfig::default();
+        config.physics.core_frac = 1.5;
+        assert!(config.validate().is_err());
+
+        let mut config = SimConfig::default();
+        config.physics.interaction_radius = config.world_width;
+        assert!(
+            config.validate().is_err(),
+            "grid narrower than 3 cells must be rejected"
+        );
     }
 
     #[test]

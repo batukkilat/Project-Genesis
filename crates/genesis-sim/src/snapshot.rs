@@ -27,6 +27,12 @@ pub struct WorldSnapshot {
     pub dt: f32,
     pub world_width: f32,
     pub world_height: f32,
+    // Physics parameters are part of replay identity: resuming a save must
+    // reproduce the exact same forces.
+    pub interaction_radius: f32,
+    pub core_frac: f32,
+    pub repulsion: f32,
+    pub attraction: f32,
     /// Sorted by id ascending.
     pub particles: Vec<ParticleSnap>,
 }
@@ -42,6 +48,10 @@ impl WorldSnapshot {
         h.write_f32(self.dt);
         h.write_f32(self.world_width);
         h.write_f32(self.world_height);
+        h.write_f32(self.interaction_radius);
+        h.write_f32(self.core_frac);
+        h.write_f32(self.repulsion);
+        h.write_f32(self.attraction);
         h.write_u64(self.particles.len() as u64);
         for p in &self.particles {
             h.write_u64(p.id);

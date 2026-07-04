@@ -13,5 +13,6 @@ genesis-sim = { workspace = true }
 genesis-config = { workspace = true }
 genesis-persist = { workspace = true }
 clap = { workspace = true }
+rayon = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }

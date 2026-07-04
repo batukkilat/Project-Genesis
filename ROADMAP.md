@@ -13,7 +13,7 @@ Settled — do not re-litigate without cause:
 - **Time:** fixed dt forever; time warp = more ticks per wall second, never a bigger dt.
 - **Save format:** hand-rolled versioned binary (`GENS`, format v1) — no serialization dependency in the format.
 
-## Phase 1 — Foundation (current)
+## Phase 1 — Foundation (done, v0.1.0)
 
 Defined in MASTER_PROMPT.md. Workspace, headless simulation, particle type, deterministic RNG, fixed-timestep loop, ECS, config, logging, save/load framework, tests.
 
@@ -33,9 +33,11 @@ genesis/
 
 Renderer, observer, and AI crates are added in their own phases — not scaffolded empty now.
 
-## Phase 2 — Physics and Space
+## Phase 2 — Physics and Space (done, v0.2.0)
 
 Goal: particles move, collide, and exchange matter/energy under conservation laws, in parallel, deterministically.
+
+Shipped: SoA particle store in canonical (cell, id) order; uniform torus grid; generic short-range kernel (Particle-Life-shaped: repulsion core + attraction band); semi-implicit Euler; rayon chunk-parallel force/integrate passes with thread-count-invariant hashing (proven at 1M particles, see BASELINES.md); matter conserved exactly, momentum/energy within tolerance; save format v2 (physics params in replay identity). Adaptive-detail groundwork deferred to when Phase 3 makes cells meaningfully idle.
 
 Deliverables:
 
