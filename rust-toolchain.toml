@@ -1,0 +1,4 @@
+[toolchain]
+# Pinned: determinism is guaranteed per build, so builds must be reproducible.
+channel = "1.96.1"
+components = ["rustfmt", "clippy"]

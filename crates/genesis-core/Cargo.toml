@@ -1,0 +1,9 @@
+[package]
+name = "genesis-core"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+# Intentionally dependency-free: the primitives that define replay identity
+# (RNG, state hash, particle scalars) must never change behavior because an
+# upstream crate released a new version.

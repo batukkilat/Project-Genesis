@@ -1,0 +1,8 @@
+[package]
+name = "genesis-config"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+serde = { workspace = true }
+ron = { workspace = true }

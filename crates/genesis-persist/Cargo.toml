@@ -1,0 +1,12 @@
+[package]
+name = "genesis-persist"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+genesis-core = { workspace = true }
+genesis-sim = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+genesis-config = { workspace = true }

@@ -1,0 +1,29 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/genesis-core",
+    "crates/genesis-sim",
+    "crates/genesis-config",
+    "crates/genesis-persist",
+    "crates/genesis-headless",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+
+[workspace.dependencies]
+genesis-core = { path = "crates/genesis-core" }
+genesis-sim = { path = "crates/genesis-sim" }
+genesis-config = { path = "crates/genesis-config" }
+genesis-persist = { path = "crates/genesis-persist" }
+
+bevy_ecs = "0.19"
+serde = { version = "1", features = ["derive"] }
+ron = "0.12"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+clap = { version = "4", features = ["derive"] }
+
+[profile.release]
+debug = true # keep symbols for profiling; strip for distribution later

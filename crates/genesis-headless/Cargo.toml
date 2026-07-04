@@ -1,0 +1,17 @@
+[package]
+name = "genesis-headless"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "genesis"
+path = "src/main.rs"
+
+[dependencies]
+genesis-core = { workspace = true }
+genesis-sim = { workspace = true }
+genesis-config = { workspace = true }
+genesis-persist = { workspace = true }
+clap = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
