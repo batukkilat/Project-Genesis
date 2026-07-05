@@ -1,0 +1,73 @@
+// Actual Physics: the conservation-respecting regime.
+//
+// One half of the Phase 3 "two packs, one engine" deliverable (see
+// sandbox.ron for the other). Same binary, same engine, same seed — only
+// this content differs. The regime is thermodynamically honest:
+//
+// - flows equalize (energy runs rich -> poor, like heat),
+// - structure costs something (bonding requires energy on both sides,
+//   splitting requires a real surplus),
+// - information is expensive to spread (high copy cost, real noise) and
+//   should be run with `physics.information_decay` > 0 so patterns fade
+//   unless continuously re-paid,
+// - accretion only swallows dust.
+//
+// The engine conserves matter and energy through every event in both packs;
+// what makes this one "actual" is that nothing is free.
+(
+    rules: [
+        // Thermal equalization: energy flows rich -> poor.
+        (
+            radius: 6.0,
+            self_cond: ( energy: ( min: 0.6 ) ),
+            other_cond: ( energy: ( max: 0.4 ) ),
+            probability: 0.1,
+            transfer: ( energy: 0.04 ),
+        ),
+        // Slow accretion: heavy draws matter from light.
+        (
+            radius: 4.0,
+            self_cond: ( matter: ( max: 0.4 ) ),
+            other_cond: ( matter: ( min: 0.6 ) ),
+            probability: 0.02,
+            transfer: ( matter: 0.01 ),
+        ),
+        // Bonding costs: only mutually energetic close pairs latch.
+        (
+            radius: 3.0,
+            self_cond: ( energy: ( min: 0.5 ) ),
+            other_cond: ( energy: ( min: 0.5 ) ),
+            probability: 0.08,
+            bond_create: ( strength: 3.0 ),
+        ),
+        // Structures erode: rare spontaneous break.
+        (
+            radius: 8.0,
+            probability: 0.003,
+            bond_break: true,
+        ),
+        // Information spreads only at real cost, and imperfectly.
+        (
+            radius: 6.0,
+            self_cond: ( information: ( min: 0.6 ), energy: ( min: 0.3 ) ),
+            other_cond: ( information: ( max: 0.4 ) ),
+            probability: 0.05,
+            info_copy: ( cost: 0.1, noise: 0.2 ),
+        ),
+        // Fission needs a genuine surplus.
+        (
+            radius: 6.0,
+            self_cond: ( matter: ( min: 0.8 ), energy: ( min: 0.8 ) ),
+            probability: 0.005,
+            emit: ( matter_frac: 0.5, energy_frac: 0.5, info_frac: 0.5, offset: 1.5 ),
+        ),
+        // Accretion swallows only dust.
+        (
+            radius: 3.0,
+            self_cond: ( matter: ( min: 0.9 ) ),
+            other_cond: ( matter: ( max: 0.15 ) ),
+            probability: 0.03,
+            absorb: true,
+        ),
+    ],
+)

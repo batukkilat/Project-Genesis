@@ -14,7 +14,7 @@ An Artificial Life Research Sandbox: the emergence of complexity from first prin
 
 - **Phase 1 — Foundation**: workspace, deterministic RNG (SplitMix64 + order-free derived streams), state hashing, fixed-timestep ECS loop, versioned saves. ✅
 - **Phase 2 — Physics & space**: torus world, canonical (cell, id) SoA layout, generic short-range kernel, chunk-parallel forces with thread-count-invariant hashes (proven at 1M particles — [BASELINES.md](BASELINES.md)). ✅
-- **Phase 3 — Interactions & chemistry** (in progress): data-driven rule engine (condition → probability → action), quantity transfers, RON rule-pack authoring, bonds (canonical edge list + per-tick CSR mirror, harmonic spring forces, rule-driven create/break), lossy information copy + decay (information deliberately non-conserved), particle emit/absorb (split/merge, conserved per event, ids never reused). Remaining: the two-packs-one-engine demo, then exit review.
+- **Phase 3 — Interactions & chemistry** (in progress): data-driven rule engine (condition → probability → action), quantity transfers, RON rule-pack authoring, bonds (canonical edge list + per-tick CSR mirror, harmonic spring forces, rule-driven create/break), lossy information copy + decay (information deliberately non-conserved), particle emit/absorb (split/merge, conserved per event, ids never reused). Two-regime demo shipped (packs/actual.ron vs packs/sandbox.ron — same engine, opposite economies). Remaining: exit-criteria review.
 
 ## Workspace
 

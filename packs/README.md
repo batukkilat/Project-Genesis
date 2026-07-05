@@ -5,6 +5,22 @@ compiles at load into the engine's internal rules and is hashed into replay
 identity — same seed + config + pack = same universe, a different pack is a
 different universe.
 
+## Two packs, one engine
+
+`actual.ron` and `sandbox.ron` are the Phase 3 deliverable "Actual Physics
+and Sandbox Physics as two rule packs on the same engine, not two code
+paths." Both use every action in the vocabulary (transfers, bonds,
+info-copy, emit/absorb); both are bit-deterministic; the engine conserves
+matter and energy through every event in both. The difference is pure
+content: in `actual` flows equalize and everything costs something, in
+`sandbox` flows amplify and everything is cheap. Run them from the same
+seed and watch two different universes:
+
+```sh
+genesis verify --config demo.ron --rules packs/actual.ron  --ticks 500
+genesis verify --config demo.ron --rules packs/sandbox.ron --ticks 500
+```
+
 Usage:
 
 ```sh
@@ -20,6 +36,8 @@ genesis init-rules my-pack.ron   # writes a starter pack to edit
 | `chains.ron` | binding — energetic close pairs bond into springs, rare spontaneous breaks | multi-particle structures that persist against churn (chains, rings, blobs — seed-dependent) |
 | `echoes.ron` | imprinting — info-rich particles copy information onto blank neighbors at an energy cost | information fronts spread and compete; with `information_decay` on, only re-imprinted patterns persist |
 | `churn.ron` | dynamic population — energetic heavies split, heavies eat dust | particle count finds its own balance; matter/energy conserved through every split and merge |
+| `actual.ron` | conservation-respecting regime — flows equalize, structure costs, info is expensive | slow condensation: bonded clusters where energy concentrates, patterns fade unless re-paid |
+| `sandbox.ron` | anything-goes regime — flows amplify, bonds and copies are free | runaway concentration and info saturation; boiling population |
 
 Authoring notes:
 

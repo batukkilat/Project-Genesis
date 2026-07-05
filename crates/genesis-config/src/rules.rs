@@ -482,6 +482,23 @@ mod tests {
     }
 
     #[test]
+    fn all_shipped_packs_stay_valid() {
+        // The packs/ directory is content the repo ships; schema changes
+        // must never silently orphan them.
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packs");
+        let mut checked = 0;
+        for entry in std::fs::read_dir(&dir).unwrap() {
+            let path = entry.unwrap().path();
+            if path.extension().is_some_and(|e| e == "ron") {
+                RulePack::load(&path)
+                    .unwrap_or_else(|e| panic!("{} failed to load: {e}", path.display()));
+                checked += 1;
+            }
+        }
+        assert!(checked >= 6, "expected the shipped packs, found {checked}");
+    }
+
+    #[test]
     fn file_roundtrip() {
         let dir = std::env::temp_dir().join(format!("genesis-rules-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
