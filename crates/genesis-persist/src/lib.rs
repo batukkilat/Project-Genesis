@@ -6,7 +6,7 @@
 //!
 //! ```text
 //! magic            [u8; 4]  = b"GENS"
-//! format_version   u32      = 5
+//! format_version   u32      = 6
 //! engine_version   u16 len + utf-8 bytes (informational)
 //! tick             u64
 //! rng_state        u64
@@ -23,9 +23,10 @@
 //! bond_rest_length f32      (v4: bonds joined replay identity)
 //! information_decay f32     (v5: information semantics joined replay identity)
 //! rule_count       u32      (v3: interaction rules joined replay identity)
-//! rules            rule_count * 22 f32 (CompiledRule::fields order; v4
+//! rules            rule_count * 28 f32 (CompiledRule::fields order; v4
 //!                           appended bond action code + strength; v5
-//!                           appended info-copy flag + cost + noise)
+//!                           appended info-copy flag + cost + noise; v6
+//!                           appended emit flag + fracs + offset + absorb flag)
 //! particle_count   u64
 //! particles        count * (id u64, pos f32*2, vel f32*2, matter f32,
 //!                           energy f32, information f32), sorted by id
@@ -42,7 +43,7 @@ use genesis_sim::interact::CompiledRule;
 use genesis_sim::snapshot::{BondSnap, ParticleSnap, WorldSnapshot};
 
 pub const MAGIC: [u8; 4] = *b"GENS";
-pub const FORMAT_VERSION: u32 = 5;
+pub const FORMAT_VERSION: u32 = 6;
 
 #[derive(Debug)]
 pub enum SaveError {
@@ -164,7 +165,7 @@ pub fn load_from_reader(r: &mut impl Read) -> Result<WorldSnapshot, SaveError> {
     let rule_count = read_u32(r)?;
     let mut rules = Vec::with_capacity(rule_count.min(1 << 20) as usize);
     for _ in 0..rule_count {
-        let mut fields = [0.0f32; 22];
+        let mut fields = [0.0f32; 28];
         for f in &mut fields {
             *f = read_f32(r)?;
         }
@@ -337,6 +338,12 @@ mod tests {
                 info_copy: false,
                 info_cost: 0.0,
                 info_noise: 0.0,
+                emit: false,
+                emit_matter_frac: 0.0,
+                emit_energy_frac: 0.0,
+                emit_info_frac: 0.0,
+                emit_offset: 0.0,
+                absorb: false,
             }],
         };
         let config = SimConfig {

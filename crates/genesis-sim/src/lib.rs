@@ -64,6 +64,7 @@ fn advance_tick(mut tick: ResMut<Tick>) {
 /// (see `store.rs`). Interactions run before integration because intents
 /// hold layout indices, which position changes would not invalidate — but
 /// the pair distances must match the positions the conditions saw.
+#[allow(clippy::too_many_arguments)]
 fn sim_step(
     mut store: ResMut<ParticleStore>,
     mut bonds: ResMut<BondStore>,
@@ -72,11 +73,20 @@ fn sim_step(
     rules: Res<RuleSet>,
     stream_seed: Res<StreamSeed>,
     tick: Res<Tick>,
+    mut next_id: ResMut<NextId>,
 ) {
     store.canonicalize(&geom);
     bonds.rebuild(&store);
     physics::forces(&mut store, &geom, &params.physics, &bonds);
-    interact::apply(&mut store, &mut bonds, &geom, &rules, stream_seed.0, tick.0);
+    interact::apply(
+        &mut store,
+        &mut bonds,
+        &geom,
+        &rules,
+        stream_seed.0,
+        tick.0,
+        &mut next_id.0,
+    );
     physics::integrate(&mut store, &geom, &params.physics, params.dt);
 }
 
@@ -422,6 +432,12 @@ mod tests {
                 info_copy: false,
                 info_cost: 0.0,
                 info_noise: 0.0,
+                emit: false,
+                emit_matter_frac: 0.0,
+                emit_energy_frac: 0.0,
+                emit_info_frac: 0.0,
+                emit_offset: 0.0,
+                absorb: false,
             }],
         }
     }
@@ -450,6 +466,12 @@ mod tests {
             info_copy: true,
             info_cost: 0.02,
             info_noise: 0.25,
+            emit: false,
+            emit_matter_frac: 0.0,
+            emit_energy_frac: 0.0,
+            emit_info_frac: 0.0,
+            emit_offset: 0.0,
+            absorb: false,
         });
         set.rules.push(interact::CompiledRule {
             radius: 4.0,
@@ -464,6 +486,12 @@ mod tests {
             info_copy: false,
             info_cost: 0.0,
             info_noise: 0.0,
+            emit: false,
+            emit_matter_frac: 0.0,
+            emit_energy_frac: 0.0,
+            emit_info_frac: 0.0,
+            emit_offset: 0.0,
+            absorb: false,
         });
         set.rules.push(interact::CompiledRule {
             radius: 8.0,
@@ -478,6 +506,12 @@ mod tests {
             info_copy: false,
             info_cost: 0.0,
             info_noise: 0.0,
+            emit: false,
+            emit_matter_frac: 0.0,
+            emit_energy_frac: 0.0,
+            emit_info_frac: 0.0,
+            emit_offset: 0.0,
+            absorb: false,
         });
         set
     }
@@ -537,6 +571,129 @@ mod tests {
         let snap = b.snapshot();
         assert!(!snap.bonds.is_empty(), "test needs live bonds at the save");
         let mut resumed = Simulation::from_snapshot(&snap);
+        drop(b);
+        for _ in 0..60 {
+            a.tick();
+            resumed.tick();
+        }
+        assert_eq!(a.state_hash(), resumed.state_hash());
+    }
+
+    /// Emit + absorb churn: energetic heavies split, heavies eat lights.
+    fn fission_rules() -> RuleSet {
+        let mut split = interact::CompiledRule {
+            radius: 6.0,
+            self_cond: interact::QuantityCondition::ANY,
+            other_cond: interact::QuantityCondition::ANY,
+            probability: 0.05,
+            transfer_matter: 0.0,
+            transfer_energy: 0.0,
+            transfer_information: 0.0,
+            bond_action: interact::BondAction::None,
+            bond_strength: 0.0,
+            info_copy: false,
+            info_cost: 0.0,
+            info_noise: 0.0,
+            emit: true,
+            emit_matter_frac: 0.5,
+            emit_energy_frac: 0.5,
+            emit_info_frac: 0.5,
+            emit_offset: 1.0,
+            absorb: false,
+        };
+        split.self_cond.matter = interact::Bounds {
+            min: 0.6,
+            max: f32::INFINITY,
+        };
+        split.self_cond.energy = interact::Bounds {
+            min: 0.5,
+            max: f32::INFINITY,
+        };
+        let mut eat = split;
+        eat.emit = false;
+        eat.emit_matter_frac = 0.0;
+        eat.emit_energy_frac = 0.0;
+        eat.emit_info_frac = 0.0;
+        eat.emit_offset = 0.0;
+        eat.absorb = true;
+        eat.probability = 0.03;
+        eat.self_cond.energy = interact::Bounds::ANY;
+        eat.other_cond.matter = interact::Bounds {
+            min: f32::NEG_INFINITY,
+            max: 0.3,
+        };
+        RuleSet {
+            rules: vec![split, eat],
+        }
+    }
+
+    #[test]
+    fn create_destroy_conserves_and_stays_deterministic() {
+        let run = || {
+            let mut sim = Simulation::with_rules(&test_config(), fission_rules());
+            for _ in 0..150 {
+                sim.tick();
+            }
+            sim
+        };
+        let a = run();
+        let b = run();
+        assert_eq!(a.state_hash(), b.state_hash());
+
+        let snap = a.snapshot();
+        assert_ne!(
+            snap.particles.len(),
+            500,
+            "150 ticks of split/absorb churn should change the population"
+        );
+        // Matter and energy conserved through every create/destroy event.
+        let m: f64 = snap.particles.iter().map(|p| p.matter as f64).sum();
+        let e: f64 = snap.particles.iter().map(|p| p.energy as f64).sum();
+        let fresh = Simulation::with_rules(&test_config(), fission_rules()).snapshot();
+        let m0: f64 = fresh.particles.iter().map(|p| p.matter as f64).sum();
+        let e0: f64 = fresh.particles.iter().map(|p| p.energy as f64).sum();
+        assert!(((m - m0) / m0).abs() < 1e-4, "matter leaked: {m0} -> {m}");
+        assert!(
+            ((e - e0) / e0.max(1.0)).abs() < 1e-4,
+            "energy leaked: {e0} -> {e}"
+        );
+
+        // Ids unique, never reused, all below the next-id watermark.
+        let mut ids: Vec<u64> = snap.particles.iter().map(|p| p.id).collect();
+        ids.sort_unstable();
+        ids.dedup();
+        assert_eq!(ids.len(), snap.particles.len(), "duplicate ids");
+        assert!(ids.iter().all(|&id| id < snap.next_id));
+        assert!(snap.next_id > 500, "emissions must have consumed ids");
+    }
+
+    #[test]
+    fn create_destroy_thread_count_does_not_change_hash() {
+        let run = |threads: usize| {
+            let pool = rayon::ThreadPoolBuilder::new()
+                .num_threads(threads)
+                .build()
+                .unwrap();
+            pool.install(|| {
+                let mut sim = Simulation::with_rules(&test_config(), fission_rules());
+                for _ in 0..100 {
+                    sim.tick();
+                }
+                sim.state_hash()
+            })
+        };
+        assert_eq!(run(1), run(4), "create/destroy broke thread invariance");
+    }
+
+    #[test]
+    fn resume_with_create_destroy_matches_uninterrupted() {
+        let mut a = Simulation::with_rules(&test_config(), fission_rules());
+        let mut b = Simulation::with_rules(&test_config(), fission_rules());
+        for _ in 0..60 {
+            a.tick();
+            b.tick();
+        }
+        let mut resumed = Simulation::from_snapshot(&b.snapshot());
         drop(b);
         for _ in 0..60 {
             a.tick();

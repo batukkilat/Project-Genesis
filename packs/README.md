@@ -19,6 +19,7 @@ genesis init-rules my-pack.ron   # writes a starter pack to edit
 | `hoarders.ron` | amplifying — energy flows poor→rich, matter light→heavy | inequality concentrates; hoards emerge (or churn — seed-dependent) |
 | `chains.ron` | binding — energetic close pairs bond into springs, rare spontaneous breaks | multi-particle structures that persist against churn (chains, rings, blobs — seed-dependent) |
 | `echoes.ron` | imprinting — info-rich particles copy information onto blank neighbors at an energy cost | information fronts spread and compete; with `information_decay` on, only re-imprinted patterns persist |
+| `churn.ron` | dynamic population — energetic heavies split, heavies eat dust | particle count finds its own balance; matter/energy conserved through every split and merge |
 
 Authoring notes:
 
@@ -37,5 +38,12 @@ Authoring notes:
   0..1). The initiator pays `c` energy to the receiver; if it cannot pay,
   the entire event aborts, transfers included. Information is deliberately
   not conserved — copies create it, `physics.information_decay` destroys it.
+- `emit: ( matter_frac, energy_frac, info_frac, offset )` spawns one child
+  from the initiator's stocks (fractions are moved, so every quantity is
+  conserved). The child inherits the parent's velocity and appears `offset`
+  units away; the event aborts if the matter split would break the mass
+  floor. `absorb: true` destroys the other particle, moving all its stocks
+  to the initiator (mass-weighted velocity merge). Emit and absorb are
+  mutually exclusive per rule; ids are never reused.
 - No biology, no win conditions. Packs describe how quantities move; whatever
   structure appears, emerges.

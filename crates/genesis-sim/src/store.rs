@@ -63,6 +63,42 @@ impl ParticleStore {
         self.information.push(i);
     }
 
+    /// Order-preserving removal of dead particles (`alive[i] == false`).
+    /// `alive` may be shorter than the store — particles appended after it
+    /// was sized (same-tick emissions) are always kept. Also compacts the
+    /// force accumulators so a following `integrate` stays index-aligned;
+    /// `cell`/`cell_start` go stale and are rebuilt by the next
+    /// `canonicalize`.
+    pub fn remove_dead(&mut self, alive: &[bool]) {
+        let keep = |i: usize| alive.get(i).copied().unwrap_or(true);
+        let mut w = 0;
+        for r in 0..self.len() {
+            if keep(r) {
+                self.id[w] = self.id[r];
+                self.px[w] = self.px[r];
+                self.py[w] = self.py[r];
+                self.vx[w] = self.vx[r];
+                self.vy[w] = self.vy[r];
+                self.matter[w] = self.matter[r];
+                self.energy[w] = self.energy[r];
+                self.information[w] = self.information[r];
+                self.fx[w] = self.fx[r];
+                self.fy[w] = self.fy[r];
+                w += 1;
+            }
+        }
+        self.id.truncate(w);
+        self.px.truncate(w);
+        self.py.truncate(w);
+        self.vx.truncate(w);
+        self.vy.truncate(w);
+        self.matter.truncate(w);
+        self.energy.truncate(w);
+        self.information.truncate(w);
+        self.fx.truncate(w);
+        self.fy.truncate(w);
+    }
+
     /// Re-sort all particle arrays into (cell, id) order and rebuild the
     /// per-cell offsets. Must run before the force pass each tick.
     pub fn canonicalize(&mut self, geom: &GridGeom) {

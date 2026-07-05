@@ -1,0 +1,28 @@
+// Churn: the population itself becomes dynamic.
+//
+// Energetic heavy particles split in two (emit: fractions of the parent's
+// stocks move into a child — conserved by construction, ids never reused);
+// heavy particles absorb nearby dust (merge: stocks move to the eater,
+// velocity becomes the mass-weighted average, the victim is destroyed).
+// Total matter and energy are conserved through every event; only the
+// particle count is not. Long-run population size is an emergent balance
+// between the split rate and the eat rate, not an authored number.
+(
+    rules: [
+        // Fission: heavy + energetic -> two halves.
+        (
+            radius: 6.0,
+            self_cond: ( matter: ( min: 0.6 ), energy: ( min: 0.5 ) ),
+            probability: 0.02,
+            emit: ( matter_frac: 0.5, energy_frac: 0.5, info_frac: 0.5, offset: 1.5 ),
+        ),
+        // Accretion: heavy eats dust.
+        (
+            radius: 4.0,
+            self_cond: ( matter: ( min: 0.8 ) ),
+            other_cond: ( matter: ( max: 0.25 ) ),
+            probability: 0.05,
+            absorb: true,
+        ),
+    ],
+)

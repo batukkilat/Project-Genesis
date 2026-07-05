@@ -59,7 +59,7 @@ Non-goals: chemistry, bonds, any interaction beyond physical forces.
 
 Goal: the data-driven interaction engine — the heart of emergence.
 
-Shipped so far: interaction engine (condition → probability → action, two-phase collect/commit, per-pair derived RNG streams); quantity transfers; RON rule-pack authoring layer + starter packs; bonds (canonical id-keyed edge list + per-tick CSR mirror per docs/research/bond-storage.md, harmonic spring forces, rule-driven create/break); information semantics per decisions log — lossy info_copy action (energy cost paid to receiver, noise from a second per-pair stream draw, whole-event abort on unpayable cost) + physics.information_decay (save format v5). Remaining: particle create/destroy; the two-packs-one-engine demonstration.
+Shipped so far: the full interaction action vocabulary — quantity transfers; bonds (canonical id-keyed edge list + per-tick CSR mirror per docs/research/bond-storage.md, harmonic springs, rule-driven create/break); lossy info_copy + physics.information_decay (information deliberately non-conserved); particle emit/absorb (split/merge — emissions append mid-commit, absorptions mark-dead + compact, matter+energy conserved per event, ids never reused; save format v6). All on the RON rule-pack layer with per-pair derived RNG streams. Remaining: the two-packs-one-engine demonstration, then Phase 3 exit review.
 
 Deliverables:
 

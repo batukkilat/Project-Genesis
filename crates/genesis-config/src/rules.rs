@@ -95,6 +95,36 @@ pub struct InfoCopySpec {
     pub noise: f32,
 }
 
+/// Particle emission (split): the initiator spawns one new particle carrying
+/// the given fractions of the initiator's current matter/energy/information —
+/// moved, not copied, so every quantity is conserved by the event. The child
+/// inherits the initiator's velocity exactly (momentum-exact) and appears
+/// `offset` world units away at a deterministic per-pair angle. The event
+/// aborts if the matter split would leave either side below the mass floor.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct EmitSpec {
+    /// Fraction of the initiator's matter moved to the child (0..1).
+    pub matter_frac: f32,
+    /// Fraction of the initiator's energy moved to the child (0..1).
+    pub energy_frac: f32,
+    /// Fraction of the initiator's information moved to the child (0..1).
+    pub info_frac: f32,
+    /// Distance from the initiator where the child appears (> 0).
+    pub offset: f32,
+}
+
+impl Default for EmitSpec {
+    fn default() -> Self {
+        EmitSpec {
+            matter_frac: 0.5,
+            energy_frac: 0.5,
+            info_frac: 0.5,
+            offset: 1.0,
+        }
+    }
+}
+
 /// One authored rule. `radius` and `probability` are mandatory; everything
 /// else defaults to "match anything, move nothing".
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
@@ -118,6 +148,15 @@ pub struct RuleSpec {
     /// no copy).
     #[serde(default)]
     pub info_copy: Option<InfoCopySpec>,
+    /// Spawn a new particle from the initiator's stocks (omitted = none).
+    /// Mutually exclusive with `absorb`.
+    #[serde(default)]
+    pub emit: Option<EmitSpec>,
+    /// The initiator absorbs the other particle: all of its quantities move
+    /// to the initiator (velocity becomes the mass-weighted average) and the
+    /// other is destroyed. Mutually exclusive with `emit`.
+    #[serde(default)]
+    pub absorb: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
@@ -185,6 +224,26 @@ impl RulePack {
                     ));
                 }
             }
+            if let Some(emit) = rule.emit {
+                if rule.absorb {
+                    return err("emit and absorb are mutually exclusive".into());
+                }
+                for (name, frac) in [
+                    ("matter_frac", emit.matter_frac),
+                    ("energy_frac", emit.energy_frac),
+                    ("info_frac", emit.info_frac),
+                ] {
+                    if !(0.0..=1.0).contains(&frac) {
+                        return err(format!("emit.{name} must be in [0, 1], got {frac}"));
+                    }
+                }
+                if !(emit.offset > 0.0 && emit.offset.is_finite()) {
+                    return err(format!(
+                        "emit.offset must be positive and finite, got {}",
+                        emit.offset
+                    ));
+                }
+            }
             if let Some(copy) = rule.info_copy {
                 if !(copy.cost >= 0.0 && copy.cost.is_finite()) {
                     return err(format!(
@@ -247,6 +306,8 @@ impl RulePack {
                     bond_create: None,
                     bond_break: false,
                     info_copy: None,
+                    emit: None,
+                    absorb: false,
                 },
                 RuleSpec {
                     radius: 4.0,
@@ -272,6 +333,8 @@ impl RulePack {
                     bond_create: None,
                     bond_break: false,
                     info_copy: None,
+                    emit: None,
+                    absorb: false,
                 },
             ],
         }
@@ -347,6 +410,45 @@ mod tests {
         bad.rules[0].info_copy = Some(InfoCopySpec {
             cost: 0.0,
             noise: 1.5,
+        });
+        assert!(bad.validate().is_err());
+    }
+
+    #[test]
+    fn emit_absorb_fields_parse_and_validate() {
+        let dir = std::env::temp_dir().join(format!("genesis-ca-rules-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("ca.ron");
+        std::fs::write(
+            &path,
+            "(rules: [
+                (radius: 6.0, probability: 0.05,
+                 emit: (matter_frac: 0.5, energy_frac: 0.5, offset: 1.0)),
+                (radius: 6.0, probability: 0.03, absorb: true),
+            ])",
+        )
+        .unwrap();
+        let pack = RulePack::load(&path).unwrap();
+        assert_eq!(pack.rules[0].emit.unwrap().matter_frac, 0.5);
+        assert_eq!(pack.rules[0].emit.unwrap().info_frac, 0.5, "default");
+        assert!(pack.rules[1].absorb);
+        std::fs::remove_dir_all(&dir).ok();
+
+        let mut bad = pack.clone();
+        bad.rules[0].absorb = true; // emit + absorb on one rule
+        assert!(bad.validate().is_err());
+
+        let mut bad = pack.clone();
+        bad.rules[0].emit = Some(EmitSpec {
+            matter_frac: 1.5,
+            ..Default::default()
+        });
+        assert!(bad.validate().is_err());
+
+        let mut bad = pack.clone();
+        bad.rules[0].emit = Some(EmitSpec {
+            offset: 0.0,
+            ..Default::default()
         });
         assert!(bad.validate().is_err());
     }
