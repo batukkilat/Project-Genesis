@@ -20,6 +20,7 @@ genesis-persist = { path = "crates/genesis-persist" }
 
 bevy_ecs = "0.19"
 rayon = "1"
+rustc-hash = "2"
 serde = { version = "1", features = ["derive"] }
 ron = "0.12"
 tracing = "0.1"

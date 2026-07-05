@@ -14,6 +14,7 @@ use genesis_config::PhysicsParams;
 use genesis_core::torus;
 use rayon::prelude::*;
 
+use crate::bonds::BondStore;
 use crate::grid::GridGeom;
 use crate::store::{ParticleStore, par_chunk};
 
@@ -61,8 +62,22 @@ pub fn potential(r: f32, p: &PhysicsParams) -> f32 {
 }
 
 /// Force pass: for every particle, accumulate the kernel force from all
-/// neighbors within the cutoff. Store must be canonicalized first.
-pub fn forces(store: &mut ParticleStore, geom: &GridGeom, params: &PhysicsParams) {
+/// neighbors within the cutoff, plus the spring force from its bonds. Store
+/// must be canonicalized and `bonds` rebuilt against it first.
+///
+/// Bond springs are harmonic: magnitude `strength * (r - rest_length)`,
+/// pulling toward the partner when stretched and pushing when compressed.
+/// Each endpoint computes its own side from the CSR mirror (disjoint
+/// writes); `torus::delta` antisymmetry makes the pair forces exactly
+/// opposite, so momentum is conserved. Unlike the kernel, bond springs have
+/// no distance cutoff — a bond keeps pulling however far it stretches
+/// (torus wrap bounds this at half the world).
+pub fn forces(
+    store: &mut ParticleStore,
+    geom: &GridGeom,
+    params: &PhysicsParams,
+    bonds: &BondStore,
+) {
     let ParticleStore {
         px,
         py,
@@ -79,6 +94,8 @@ pub fn forces(store: &mut ParticleStore, geom: &GridGeom, params: &PhysicsParams
 
     let r_cut2 = params.interaction_radius * params.interaction_radius;
     let world = (geom.world_w, geom.world_h);
+    let rest = params.bond_rest_length;
+    let has_bonds = !bonds.is_empty();
 
     fx.par_chunks_mut(par_chunk())
         .zip(fy.par_chunks_mut(par_chunk()))
@@ -105,6 +122,21 @@ pub fn forces(store: &mut ParticleStore, geom: &GridGeom, params: &PhysicsParams
                         }
                         let r = r2.sqrt();
                         let f = kernel(r, params) / r;
+                        ax += dx * f;
+                        ay += dy * f;
+                    }
+                }
+                if has_bonds {
+                    for (partner, row) in bonds.partners_of(i) {
+                        let j = partner as usize;
+                        let dx = torus::delta(xi, px[j], world.0);
+                        let dy = torus::delta(yi, py[j], world.1);
+                        let r2 = dx * dx + dy * dy;
+                        if r2 == 0.0 {
+                            continue;
+                        }
+                        let r = r2.sqrt();
+                        let f = bonds.strength[row as usize] * (r - rest) / r;
                         ax += dx * f;
                         ay += dy * f;
                     }
@@ -158,7 +190,60 @@ mod tests {
             core_frac: 0.4,
             repulsion: 40.0,
             attraction: 5.0,
+            bond_rest_length: 3.0,
         }
+    }
+
+    #[test]
+    fn bond_spring_acts_beyond_kernel_cutoff() {
+        // Two bonded particles farther apart than the kernel radius: the only
+        // force is the spring, pulling them together with exactly opposite
+        // forces (momentum conservation).
+        let p = params();
+        let geom = GridGeom::new(64.0, 64.0, p.interaction_radius);
+        let mut s = ParticleStore::default();
+        s.push(0, 20.0, 32.0, 0.0, 0.0, 1.0, 0.0, 0.0);
+        s.push(1, 36.0, 32.0, 0.0, 0.0, 1.0, 0.0, 0.0); // r = 16 > cutoff 8
+        s.canonicalize(&geom);
+        let mut bonds = BondStore::default();
+        bonds.create(0, 1, 2.0);
+        bonds.rebuild(&s);
+        forces(&mut s, &geom, &p, &bonds);
+
+        let i0 = s.id.iter().position(|&x| x == 0).unwrap();
+        let i1 = s.id.iter().position(|&x| x == 1).unwrap();
+        let expect = 2.0 * (16.0 - p.bond_rest_length); // strength * (r - rest)
+        assert!((s.fx[i0] - expect).abs() < 1e-4, "got {}", s.fx[i0]);
+        assert_eq!(s.fx[i0], -s.fx[i1], "pair forces must be exactly opposite");
+        assert_eq!(s.fy[i0], 0.0);
+        assert_eq!(s.fy[i1], 0.0);
+    }
+
+    #[test]
+    fn compressed_bond_pushes_apart() {
+        let p = params();
+        let geom = GridGeom::new(64.0, 64.0, p.interaction_radius);
+        let mut s = ParticleStore::default();
+        // Separation 1.0 < rest 3.0 → spring pushes apart. Kernel repulsion
+        // also pushes; check the spring contribution by differencing a
+        // bondless run.
+        s.push(0, 30.0, 32.0, 0.0, 0.0, 1.0, 0.0, 0.0);
+        s.push(1, 31.0, 32.0, 0.0, 0.0, 1.0, 0.0, 0.0);
+        s.canonicalize(&geom);
+        forces(&mut s, &geom, &p, &BondStore::default());
+        let i0 = s.id.iter().position(|&x| x == 0).unwrap();
+        let bare = s.fx[i0];
+
+        let mut bonds = BondStore::default();
+        bonds.create(0, 1, 2.0);
+        bonds.rebuild(&s);
+        forces(&mut s, &geom, &p, &bonds);
+        let spring = s.fx[i0] - bare;
+        let expect = 2.0 * (1.0 - p.bond_rest_length); // negative: away from partner
+        assert!(
+            (spring - expect).abs() < 1e-4,
+            "got {spring}, want {expect}"
+        );
     }
 
     #[test]

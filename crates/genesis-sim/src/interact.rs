@@ -1,14 +1,13 @@
 //! Layer 1: the Interaction System — discrete, rule-driven state transitions.
 //!
-//! Phase 3 skeleton: quantity transfers between nearby particles, following
-//! the constitution pipeline (condition → probability → action) with a
-//! deterministic two-phase collect-then-commit step. Costs, bonds, and
-//! create/destroy join once their parked design questions (QUESTIONS.md) are
-//! answered; the machinery here is what they will plug into.
+//! Phase 3: quantity transfers and bond create/break between nearby
+//! particles, following the constitution pipeline (condition → probability →
+//! action) with a deterministic two-phase collect-then-commit step. Costs
+//! and particle create/destroy are the remaining actions to join.
 //!
-//! Rules here are the *compiled internal representation*. How rules are
-//! authored on disk is parked (QUESTIONS.md Q2) — whatever the answer, it
-//! compiles down to these structs.
+//! Rules here are the *compiled internal representation*; the authoring
+//! format is the RON schema in `genesis_config::rules` (decisions log Q2),
+//! which compiles down to these structs.
 //!
 //! Determinism:
 //! - Phase A (parallel collect): every candidate pair rolls its own RNG
@@ -71,6 +70,16 @@ impl QuantityCondition {
     }
 }
 
+/// Bond effect of a rule firing on the pair. `Create` is a no-op if the pair
+/// is already bonded (bonds never stack); `Break` is a no-op if it is not.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum BondAction {
+    #[default]
+    None,
+    Create,
+    Break,
+}
+
 /// One compiled interaction rule: an ordered pair event from an initiator to
 /// an other particle within `radius`, firing with `probability` per candidate
 /// pair per tick. Note both orderings of a pair are evaluated independently.
@@ -85,6 +94,10 @@ pub struct CompiledRule {
     pub transfer_matter: f32,
     pub transfer_energy: f32,
     pub transfer_information: f32,
+    pub bond_action: BondAction,
+    /// Spring stiffness of a created bond; meaningful only for
+    /// `BondAction::Create`.
+    pub bond_strength: f32,
 }
 
 /// The active rule set. Part of replay identity — its content is hashed into
@@ -120,6 +133,12 @@ impl RuleSet {
                     transfer_matter: r.transfer.matter,
                     transfer_energy: r.transfer.energy,
                     transfer_information: r.transfer.information,
+                    bond_action: match (r.bond_create, r.bond_break) {
+                        (Some(_), _) => BondAction::Create,
+                        (None, true) => BondAction::Break,
+                        (None, false) => BondAction::None,
+                    },
+                    bond_strength: r.bond_create.map_or(0.0, |b| b.strength),
                 })
                 .collect(),
         }
@@ -160,14 +179,22 @@ impl RuleSet {
                     && r.transfer_information >= 0.0,
                 "rule {i}: transfers must be non-negative"
             );
+            if r.bond_action == BondAction::Create {
+                assert!(
+                    r.bond_strength > 0.0 && r.bond_strength.is_finite(),
+                    "rule {i}: bond strength {} must be positive and finite",
+                    r.bond_strength
+                );
+            }
         }
     }
 }
 
 impl CompiledRule {
     /// Canonical field order, used by hashing and serialization. Keep in
-    /// sync with `from_fields`.
-    pub fn fields(&self) -> [f32; 17] {
+    /// sync with `from_fields`. The bond action is encoded as a code float
+    /// (0 = none, 1 = create, 2 = break).
+    pub fn fields(&self) -> [f32; 19] {
         [
             self.radius,
             self.self_cond.matter.min,
@@ -186,10 +213,19 @@ impl CompiledRule {
             self.transfer_matter,
             self.transfer_energy,
             self.transfer_information,
+            match self.bond_action {
+                BondAction::None => 0.0,
+                BondAction::Create => 1.0,
+                BondAction::Break => 2.0,
+            },
+            self.bond_strength,
         ]
     }
 
-    pub fn from_fields(f: [f32; 17]) -> Self {
+    /// Inverse of `fields`. An unknown bond-action code decodes to `None`
+    /// rather than panicking — a corrupt save still fails cleanly at its
+    /// integrity-hash check instead of aborting mid-parse.
+    pub fn from_fields(f: [f32; 19]) -> Self {
         CompiledRule {
             radius: f[0],
             self_cond: QuantityCondition {
@@ -224,6 +260,14 @@ impl CompiledRule {
             transfer_matter: f[14],
             transfer_energy: f[15],
             transfer_information: f[16],
+            bond_action: if f[17] == 1.0 {
+                BondAction::Create
+            } else if f[17] == 2.0 {
+                BondAction::Break
+            } else {
+                BondAction::None
+            },
+            bond_strength: f[18],
         }
     }
 }
@@ -237,9 +281,12 @@ struct Intent {
 
 /// Run one interaction step: collect intents in parallel, commit sequentially
 /// in canonical order. Store must be canonicalized and positions must not
-/// have moved since (call between `forces` and `integrate`).
+/// have moved since (call between `forces` and `integrate`). Bond edits land
+/// on the edge list only; the CSR mirror goes stale but nothing reads it
+/// again until the next tick's rebuild.
 pub fn apply(
     store: &mut ParticleStore,
+    bonds: &mut crate::bonds::BondStore,
     geom: &GridGeom,
     rules: &RuleSet,
     stream_seed: u64,
@@ -334,6 +381,16 @@ pub fn apply(
         store.energy[j] += e;
         store.information[i] -= inf;
         store.information[j] += inf;
+
+        match rule.bond_action {
+            BondAction::None => {}
+            BondAction::Create => {
+                bonds.create(store.id[i], store.id[j], rule.bond_strength);
+            }
+            BondAction::Break => {
+                bonds.remove(store.id[i], store.id[j]);
+            }
+        }
         committed += 1;
     }
     if committed > 0 {
@@ -344,6 +401,11 @@ pub fn apply(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::bonds::BondStore;
+
+    fn bonds_scratch() -> BondStore {
+        BondStore::default()
+    }
 
     fn transfer_energy_rule(probability: f32) -> CompiledRule {
         CompiledRule {
@@ -354,6 +416,8 @@ mod tests {
             transfer_matter: 0.0,
             transfer_energy: 0.1,
             transfer_information: 0.0,
+            bond_action: BondAction::None,
+            bond_strength: 0.0,
         }
     }
 
@@ -377,7 +441,7 @@ mod tests {
             max: f32::INFINITY,
         };
         let rules = RuleSet { rules: vec![rule] };
-        apply(&mut s, &geom, &rules, 7, 0);
+        apply(&mut s, &mut bonds_scratch(), &geom, &rules, 7, 0);
         let total: f32 = s.energy.iter().sum();
         assert!((total - 1.0).abs() < 1e-5, "energy total changed: {total}");
         assert!(s.energy.iter().all(|&e| e >= 0.0));
@@ -398,7 +462,7 @@ mod tests {
             rules: vec![transfer_energy_rule(0.0)],
         };
         for tick in 0..100 {
-            apply(&mut s, &geom, &rules, 7, tick);
+            apply(&mut s, &mut bonds_scratch(), &geom, &rules, 7, tick);
         }
         assert_eq!(before.0, s.energy);
         assert_eq!(before.1, s.matter);
@@ -421,10 +485,12 @@ mod tests {
                 transfer_matter: 0.5,
                 transfer_energy: 0.5,
                 transfer_information: 0.5,
+                bond_action: BondAction::None,
+                bond_strength: 0.0,
             }],
         };
         for tick in 0..50 {
-            apply(&mut s, &geom, &rules, 7, tick);
+            apply(&mut s, &mut bonds_scratch(), &geom, &rules, 7, tick);
         }
         for i in 0..s.len() {
             assert!(
@@ -448,7 +514,7 @@ mod tests {
         };
         let rules = RuleSet { rules: vec![rule] };
         let before = s.energy.clone();
-        apply(&mut s, &geom, &rules, 7, 0);
+        apply(&mut s, &mut bonds_scratch(), &geom, &rules, 7, 0);
         assert_eq!(before, s.energy);
     }
 
@@ -485,7 +551,62 @@ mod tests {
             transfer_matter: 0.0,
             transfer_energy: 0.1,
             transfer_information: 0.05,
+            bond_action: BondAction::Create,
+            bond_strength: 1.5,
         };
         assert_eq!(CompiledRule::from_fields(rule.fields()), rule);
+        let broken = CompiledRule {
+            bond_action: BondAction::Break,
+            bond_strength: 0.0,
+            ..rule
+        };
+        assert_eq!(CompiledRule::from_fields(broken.fields()), broken);
+    }
+
+    fn bond_rule(action: BondAction) -> CompiledRule {
+        CompiledRule {
+            radius: 8.0,
+            self_cond: QuantityCondition::ANY,
+            other_cond: QuantityCondition::ANY,
+            probability: 1.0,
+            transfer_matter: 0.0,
+            transfer_energy: 0.0,
+            transfer_information: 0.0,
+            bond_action: action,
+            bond_strength: if action == BondAction::Create {
+                2.0
+            } else {
+                0.0
+            },
+        }
+    }
+
+    #[test]
+    fn bond_create_rule_makes_one_edge() {
+        // Both orderings of the pair fire, but bonds never stack: exactly
+        // one edge results, and repeating the tick stays at one.
+        let (mut s, geom) = two_particle_setup();
+        let mut bonds = BondStore::default();
+        let rules = RuleSet {
+            rules: vec![bond_rule(BondAction::Create)],
+        };
+        apply(&mut s, &mut bonds, &geom, &rules, 7, 0);
+        assert_eq!(bonds.len(), 1);
+        assert!(bonds.contains(0, 1));
+        assert_eq!(bonds.strength[0], 2.0);
+        apply(&mut s, &mut bonds, &geom, &rules, 7, 1);
+        assert_eq!(bonds.len(), 1);
+    }
+
+    #[test]
+    fn bond_break_rule_removes_the_edge() {
+        let (mut s, geom) = two_particle_setup();
+        let mut bonds = BondStore::default();
+        bonds.create(0, 1, 2.0);
+        let rules = RuleSet {
+            rules: vec![bond_rule(BondAction::Break)],
+        };
+        apply(&mut s, &mut bonds, &geom, &rules, 7, 0);
+        assert!(bonds.is_empty());
     }
 }

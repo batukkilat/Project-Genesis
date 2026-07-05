@@ -1,0 +1,28 @@
+// Chains: the first bonding pack.
+//
+// Energetic particles that meet at close range bond into springs; a rare
+// unconditional break rule keeps the population churning. Whether the result
+// is chains, rings, or blobs depends on seed and density — structure is the
+// emergent part, not the authored part.
+//
+// Bond mechanics (engine-side): a bond is a harmonic spring with rest length
+// `physics.bond_rest_length` and stiffness = the strength authored here.
+// Bonds never stack, survive any distance, and are part of replay identity.
+(
+    rules: [
+        // Close energetic pairs latch together.
+        (
+            radius: 3.0,
+            self_cond: ( energy: ( min: 0.4 ) ),
+            other_cond: ( energy: ( min: 0.4 ) ),
+            probability: 0.15,
+            bond_create: ( strength: 4.0 ),
+        ),
+        // Rare spontaneous break — structures must persist against churn.
+        (
+            radius: 8.0,
+            probability: 0.005,
+            bond_break: true,
+        ),
+    ],
+)

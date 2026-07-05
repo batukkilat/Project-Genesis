@@ -8,6 +8,7 @@
 //! lives in a SoA store (`store.rs`) for cache-friendly, deterministic
 //! parallel iteration.
 
+pub mod bonds;
 pub mod grid;
 pub mod interact;
 pub mod physics;
@@ -18,9 +19,10 @@ use bevy_ecs::prelude::*;
 use genesis_config::{PhysicsParams, SimConfig};
 use genesis_core::DetRng;
 
+use bonds::BondStore;
 use grid::GridGeom;
 use interact::RuleSet;
-use snapshot::{ParticleSnap, WorldSnapshot};
+use snapshot::{BondSnap, ParticleSnap, WorldSnapshot};
 use store::ParticleStore;
 
 /// Simulation tick counter. Time inside the simulation is this counter and
@@ -64,6 +66,7 @@ fn advance_tick(mut tick: ResMut<Tick>) {
 /// the pair distances must match the positions the conditions saw.
 fn sim_step(
     mut store: ResMut<ParticleStore>,
+    mut bonds: ResMut<BondStore>,
     geom: Res<GridGeom>,
     params: Res<Params>,
     rules: Res<RuleSet>,
@@ -71,8 +74,9 @@ fn sim_step(
     tick: Res<Tick>,
 ) {
     store.canonicalize(&geom);
-    physics::forces(&mut store, &geom, &params.physics);
-    interact::apply(&mut store, &geom, &rules, stream_seed.0, tick.0);
+    bonds.rebuild(&store);
+    physics::forces(&mut store, &geom, &params.physics, &bonds);
+    interact::apply(&mut store, &mut bonds, &geom, &rules, stream_seed.0, tick.0);
     physics::integrate(&mut store, &geom, params.dt);
 }
 
@@ -132,6 +136,7 @@ impl Simulation {
             StreamSeed(stream_seed),
             rules,
             store,
+            BondStore::default(),
         );
         tracing::info!(
             particles = config.particle_count,
@@ -154,6 +159,7 @@ impl Simulation {
                 core_frac: snap.core_frac,
                 repulsion: snap.repulsion,
                 attraction: snap.attraction,
+                bond_rest_length: snap.bond_rest_length,
             },
         };
         let mut store = ParticleStore::default();
@@ -169,6 +175,11 @@ impl Simulation {
                 p.information,
             );
         }
+        let mut bonds = BondStore::default();
+        for b in &snap.bonds {
+            bonds.push(b.a, b.b, b.strength);
+        }
+        bonds.sort_canonical();
         Self::assemble(
             params,
             Tick(snap.tick),
@@ -179,6 +190,7 @@ impl Simulation {
                 rules: snap.rules.clone(),
             },
             store,
+            bonds,
         )
     }
 
@@ -191,6 +203,7 @@ impl Simulation {
         stream_seed: StreamSeed,
         rules: RuleSet,
         store: ParticleStore,
+        bonds: BondStore,
     ) -> Self {
         rules.assert_valid(params.physics.interaction_radius);
         let mut world = World::new();
@@ -206,6 +219,7 @@ impl Simulation {
         world.insert_resource(stream_seed);
         world.insert_resource(rules);
         world.insert_resource(store);
+        world.insert_resource(bonds);
 
         let mut schedule = Schedule::default();
         schedule.add_systems((sim_step, advance_tick).chain());
@@ -235,6 +249,7 @@ impl Simulation {
         let stream_seed = self.world.resource::<StreamSeed>().0;
         let rules = self.world.resource::<RuleSet>().rules.clone();
         let store = self.world.resource::<ParticleStore>();
+        let bond_store = self.world.resource::<BondStore>();
 
         let mut particles: Vec<ParticleSnap> = (0..store.len())
             .map(|i| ParticleSnap {
@@ -250,6 +265,16 @@ impl Simulation {
             .collect();
         particles.sort_unstable_by_key(|p| p.id);
 
+        // The edge list is kept sorted by (a, b) at all times, so this is
+        // already canonical.
+        let bonds: Vec<BondSnap> = (0..bond_store.len())
+            .map(|r| BondSnap {
+                a: bond_store.a[r],
+                b: bond_store.b[r],
+                strength: bond_store.strength[r],
+            })
+            .collect();
+
         WorldSnapshot {
             tick,
             rng_state,
@@ -263,8 +288,10 @@ impl Simulation {
             core_frac: params.physics.core_frac,
             repulsion: params.physics.repulsion,
             attraction: params.physics.attraction,
+            bond_rest_length: params.physics.bond_rest_length,
             rules,
             particles,
+            bonds,
         }
     }
 
@@ -388,8 +415,124 @@ mod tests {
                 transfer_matter: 0.01,
                 transfer_energy: 0.05,
                 transfer_information: 0.01,
+                bond_action: interact::BondAction::None,
+                bond_strength: 0.0,
             }],
         }
+    }
+
+    /// Transfers plus a bonding rule and a rarer break rule — exercises the
+    /// full Phase 3 pipeline including bond mutation every tick.
+    fn bonding_rules() -> RuleSet {
+        let mut set = test_rules();
+        set.rules.push(interact::CompiledRule {
+            radius: 4.0,
+            self_cond: interact::QuantityCondition::ANY,
+            other_cond: interact::QuantityCondition::ANY,
+            probability: 0.2,
+            transfer_matter: 0.0,
+            transfer_energy: 0.0,
+            transfer_information: 0.0,
+            bond_action: interact::BondAction::Create,
+            bond_strength: 3.0,
+        });
+        set.rules.push(interact::CompiledRule {
+            radius: 8.0,
+            self_cond: interact::QuantityCondition::ANY,
+            other_cond: interact::QuantityCondition::ANY,
+            probability: 0.01,
+            transfer_matter: 0.0,
+            transfer_energy: 0.0,
+            transfer_information: 0.0,
+            bond_action: interact::BondAction::Break,
+            bond_strength: 0.0,
+        });
+        set
+    }
+
+    #[test]
+    fn bonds_form_and_are_deterministic() {
+        let run = || {
+            let mut sim = Simulation::with_rules(&test_config(), bonding_rules());
+            for _ in 0..100 {
+                sim.tick();
+            }
+            sim
+        };
+        let a = run();
+        let b = run();
+        let snap = a.snapshot();
+        assert!(
+            !snap.bonds.is_empty(),
+            "bonding rule at p=0.2 must have formed bonds in 100 ticks"
+        );
+        // Canonical order invariant.
+        for w in snap.bonds.windows(2) {
+            assert!((w[0].a, w[0].b) < (w[1].a, w[1].b), "bonds not sorted");
+        }
+        for bond in &snap.bonds {
+            assert!(bond.a < bond.b);
+        }
+        assert_eq!(a.state_hash(), b.state_hash());
+    }
+
+    #[test]
+    fn bond_thread_count_does_not_change_hash() {
+        let run = |threads: usize| {
+            let pool = rayon::ThreadPoolBuilder::new()
+                .num_threads(threads)
+                .build()
+                .unwrap();
+            pool.install(|| {
+                let mut sim = Simulation::with_rules(&test_config(), bonding_rules());
+                for _ in 0..100 {
+                    sim.tick();
+                }
+                sim.state_hash()
+            })
+        };
+        assert_eq!(run(1), run(4), "bond pipeline broke thread invariance");
+    }
+
+    #[test]
+    fn resume_with_bonds_matches_uninterrupted() {
+        let mut a = Simulation::with_rules(&test_config(), bonding_rules());
+        let mut b = Simulation::with_rules(&test_config(), bonding_rules());
+        for _ in 0..60 {
+            a.tick();
+            b.tick();
+        }
+        let snap = b.snapshot();
+        assert!(!snap.bonds.is_empty(), "test needs live bonds at the save");
+        let mut resumed = Simulation::from_snapshot(&snap);
+        drop(b);
+        for _ in 0..60 {
+            a.tick();
+            resumed.tick();
+        }
+        assert_eq!(a.state_hash(), resumed.state_hash());
+    }
+
+    #[test]
+    fn bonds_are_replay_identity() {
+        // Same particles, one extra bond: different hash from tick 0.
+        let mut a = Simulation::with_rules(&test_config(), test_rules());
+        let snap = a.snapshot();
+        let mut with_bond = snap.clone();
+        with_bond.bonds.push(snapshot::BondSnap {
+            a: 0,
+            b: 1,
+            strength: 1.0,
+        });
+        assert_ne!(snap.state_hash(), with_bond.state_hash());
+
+        // And the bond changes the future: the spring does work.
+        let mut b = Simulation::from_snapshot(&with_bond);
+        for _ in 0..20 {
+            a.tick();
+            b.tick();
+        }
+        assert_ne!(a.state_hash(), b.state_hash());
     }
 
     #[test]

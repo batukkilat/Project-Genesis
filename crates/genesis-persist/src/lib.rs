@@ -6,7 +6,7 @@
 //!
 //! ```text
 //! magic            [u8; 4]  = b"GENS"
-//! format_version   u32      = 3
+//! format_version   u32      = 4
 //! engine_version   u16 len + utf-8 bytes (informational)
 //! tick             u64
 //! rng_state        u64
@@ -20,11 +20,15 @@
 //! core_frac        f32
 //! repulsion        f32
 //! attraction       f32
+//! bond_rest_length f32      (v4: bonds joined replay identity)
 //! rule_count       u32      (v3: interaction rules joined replay identity)
-//! rules            rule_count * 17 f32 (CompiledRule::fields order)
+//! rules            rule_count * 19 f32 (CompiledRule::fields order; v4
+//!                           appended bond action code + strength)
 //! particle_count   u64
 //! particles        count * (id u64, pos f32*2, vel f32*2, matter f32,
 //!                           energy f32, information f32), sorted by id
+//! bond_count       u64      (v4)
+//! bonds            count * (a u64, b u64, strength f32), a < b, sorted (a, b)
 //! state_hash       u64      (canonical hash of the snapshot, integrity check)
 //! ```
 
@@ -33,10 +37,10 @@ use std::io::{Read, Write};
 use std::path::Path;
 
 use genesis_sim::interact::CompiledRule;
-use genesis_sim::snapshot::{ParticleSnap, WorldSnapshot};
+use genesis_sim::snapshot::{BondSnap, ParticleSnap, WorldSnapshot};
 
 pub const MAGIC: [u8; 4] = *b"GENS";
-pub const FORMAT_VERSION: u32 = 3;
+pub const FORMAT_VERSION: u32 = 4;
 
 #[derive(Debug)]
 pub enum SaveError {
@@ -91,6 +95,7 @@ pub fn save_to_writer(snap: &WorldSnapshot, w: &mut impl Write) -> Result<(), Sa
     w.write_all(&snap.core_frac.to_le_bytes())?;
     w.write_all(&snap.repulsion.to_le_bytes())?;
     w.write_all(&snap.attraction.to_le_bytes())?;
+    w.write_all(&snap.bond_rest_length.to_le_bytes())?;
 
     w.write_all(&(snap.rules.len() as u32).to_le_bytes())?;
     for rule in &snap.rules {
@@ -109,6 +114,13 @@ pub fn save_to_writer(snap: &WorldSnapshot, w: &mut impl Write) -> Result<(), Sa
         w.write_all(&p.matter.to_le_bytes())?;
         w.write_all(&p.energy.to_le_bytes())?;
         w.write_all(&p.information.to_le_bytes())?;
+    }
+
+    w.write_all(&(snap.bonds.len() as u64).to_le_bytes())?;
+    for b in &snap.bonds {
+        w.write_all(&b.a.to_le_bytes())?;
+        w.write_all(&b.b.to_le_bytes())?;
+        w.write_all(&b.strength.to_le_bytes())?;
     }
 
     w.write_all(&snap.state_hash().to_le_bytes())?;
@@ -143,11 +155,12 @@ pub fn load_from_reader(r: &mut impl Read) -> Result<WorldSnapshot, SaveError> {
     let core_frac = read_f32(r)?;
     let repulsion = read_f32(r)?;
     let attraction = read_f32(r)?;
+    let bond_rest_length = read_f32(r)?;
 
     let rule_count = read_u32(r)?;
     let mut rules = Vec::with_capacity(rule_count.min(1 << 20) as usize);
     for _ in 0..rule_count {
-        let mut fields = [0.0f32; 17];
+        let mut fields = [0.0f32; 19];
         for f in &mut fields {
             *f = read_f32(r)?;
         }
@@ -169,6 +182,16 @@ pub fn load_from_reader(r: &mut impl Read) -> Result<WorldSnapshot, SaveError> {
         });
     }
 
+    let bond_count = read_u64(r)?;
+    let mut bonds = Vec::with_capacity(bond_count.min(1 << 24) as usize);
+    for _ in 0..bond_count {
+        bonds.push(BondSnap {
+            a: read_u64(r)?,
+            b: read_u64(r)?,
+            strength: read_f32(r)?,
+        });
+    }
+
     let snap = WorldSnapshot {
         tick,
         rng_state,
@@ -182,8 +205,10 @@ pub fn load_from_reader(r: &mut impl Read) -> Result<WorldSnapshot, SaveError> {
         core_frac,
         repulsion,
         attraction,
+        bond_rest_length,
         rules,
         particles,
+        bonds,
     };
 
     let stored_hash = read_u64(r)?;
@@ -288,6 +313,50 @@ mod tests {
         }
         assert_eq!(uninterrupted.state_hash(), resumed.state_hash());
         assert_eq!(resumed.tick_count(), 100);
+    }
+
+    #[test]
+    fn roundtrip_preserves_bonds() {
+        use genesis_sim::interact::{BondAction, QuantityCondition, RuleSet};
+        let rules = RuleSet {
+            rules: vec![CompiledRule {
+                radius: 4.0,
+                self_cond: QuantityCondition::ANY,
+                other_cond: QuantityCondition::ANY,
+                probability: 0.5,
+                transfer_matter: 0.0,
+                transfer_energy: 0.0,
+                transfer_information: 0.0,
+                bond_action: BondAction::Create,
+                bond_strength: 2.0,
+            }],
+        };
+        let config = SimConfig {
+            seed: 7,
+            particle_count: 200,
+            world_width: 128.0,
+            world_height: 128.0,
+            ..Default::default()
+        };
+        let mut sim = Simulation::with_rules(&config, rules);
+        for _ in 0..60 {
+            sim.tick();
+        }
+        let snap = sim.snapshot();
+        assert!(!snap.bonds.is_empty(), "test needs bonds in the save");
+
+        let mut bytes = Vec::new();
+        save_to_writer(&snap, &mut bytes).unwrap();
+        let back = load_from_reader(&mut bytes.as_slice()).unwrap();
+        assert_eq!(snap, back);
+
+        // Resume from the loaded snapshot and stay hash-identical.
+        let mut resumed = Simulation::from_snapshot(&back);
+        for _ in 0..40 {
+            sim.tick();
+            resumed.tick();
+        }
+        assert_eq!(sim.state_hash(), resumed.state_hash());
     }
 
     #[test]

@@ -8,6 +8,14 @@ use genesis_core::StateHasher;
 
 use crate::interact::CompiledRule;
 
+/// One bond in canonical form: endpoint ids with `a < b`.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct BondSnap {
+    pub a: u64,
+    pub b: u64,
+    pub strength: f32,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ParticleSnap {
     pub id: u64,
@@ -37,10 +45,13 @@ pub struct WorldSnapshot {
     pub core_frac: f32,
     pub repulsion: f32,
     pub attraction: f32,
+    pub bond_rest_length: f32,
     /// Active interaction rules — content, and therefore replay identity.
     pub rules: Vec<CompiledRule>,
     /// Sorted by id ascending.
     pub particles: Vec<ParticleSnap>,
+    /// Sorted by (a, b) ascending, a < b.
+    pub bonds: Vec<BondSnap>,
 }
 
 impl WorldSnapshot {
@@ -59,6 +70,7 @@ impl WorldSnapshot {
         h.write_f32(self.core_frac);
         h.write_f32(self.repulsion);
         h.write_f32(self.attraction);
+        h.write_f32(self.bond_rest_length);
         h.write_u64(self.rules.len() as u64);
         for rule in &self.rules {
             for v in rule.fields() {
@@ -75,6 +87,12 @@ impl WorldSnapshot {
             h.write_f32(p.matter);
             h.write_f32(p.energy);
             h.write_f32(p.information);
+        }
+        h.write_u64(self.bonds.len() as u64);
+        for b in &self.bonds {
+            h.write_u64(b.a);
+            h.write_u64(b.b);
+            h.write_f32(b.strength);
         }
         h.finish()
     }

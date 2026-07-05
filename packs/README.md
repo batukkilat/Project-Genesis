@@ -17,6 +17,7 @@ genesis init-rules my-pack.ron   # writes a starter pack to edit
 |---|---|---|
 | `diffusion.ron` | equalizing — energy flows rich→poor, matter drifts light→heavy slowly | gradients flatten; quantities spread |
 | `hoarders.ron` | amplifying — energy flows poor→rich, matter light→heavy | inequality concentrates; hoards emerge (or churn — seed-dependent) |
+| `chains.ron` | binding — energetic close pairs bond into springs, rare spontaneous breaks | multi-particle structures that persist against churn (chains, rings, blobs — seed-dependent) |
 
 Authoring notes:
 
@@ -26,5 +27,9 @@ Authoring notes:
 - `probability` is per candidate ordered pair per tick, rolled on a stream
   named by (tick, initiator id, other id, rule) — thread count can never
   change outcomes.
+- `bond_create: ( strength: k )` bonds the pair with a spring of stiffness
+  `k` and rest length `physics.bond_rest_length`; creating an existing bond
+  is a no-op (bonds never stack). `bond_break: true` removes the pair's bond
+  if present. A rule may do one or the other, not both.
 - No biology, no win conditions. Packs describe how quantities move; whatever
   structure appears, emerges.

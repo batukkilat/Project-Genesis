@@ -52,6 +52,10 @@ pub struct PhysicsParams {
     pub repulsion: f32,
     /// Peak attraction force magnitude (at the middle of the attraction band).
     pub attraction: f32,
+    /// Rest length of bond springs. A bond pulls (or pushes) its endpoints
+    /// toward this separation with force `strength * (r - rest_length)`;
+    /// the per-bond strength is the spring stiffness.
+    pub bond_rest_length: f32,
 }
 
 impl Default for PhysicsParams {
@@ -61,6 +65,7 @@ impl Default for PhysicsParams {
             core_frac: 0.4,
             repulsion: 40.0,
             attraction: 5.0,
+            bond_rest_length: 3.0,
         }
     }
 }
@@ -187,6 +192,11 @@ impl SimConfig {
         }
         if p.attraction < 0.0 || !p.attraction.is_finite() {
             return Err(ConfigError::Invalid("attraction must be >= 0".into()));
+        }
+        if p.bond_rest_length < 0.0 || !p.bond_rest_length.is_finite() {
+            return Err(ConfigError::Invalid(
+                "bond_rest_length must be >= 0 and finite".into(),
+            ));
         }
         // The 3x3 neighbor-cell sweep double-counts cells unless the grid is
         // at least 3 cells in each axis.

@@ -70,6 +70,14 @@ pub struct TransferSpec {
     pub information: f32,
 }
 
+/// Bond created between initiator and other when the rule fires. `strength`
+/// is the spring stiffness (see `PhysicsParams::bond_rest_length`). Creating
+/// an already-existing bond is a no-op — bonds never stack.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+pub struct BondCreateSpec {
+    pub strength: f32,
+}
+
 /// One authored rule. `radius` and `probability` are mandatory; everything
 /// else defaults to "match anything, move nothing".
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
@@ -82,6 +90,13 @@ pub struct RuleSpec {
     pub probability: f32,
     #[serde(default)]
     pub transfer: TransferSpec,
+    /// Create a bond between the pair (omitted = no bond action).
+    #[serde(default)]
+    pub bond_create: Option<BondCreateSpec>,
+    /// Break the pair's bond if one exists. Mutually exclusive with
+    /// `bond_create`.
+    #[serde(default)]
+    pub bond_break: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
@@ -93,7 +108,13 @@ pub struct RulePack {
 impl RulePack {
     pub fn load(path: &Path) -> Result<Self, ConfigError> {
         let text = std::fs::read_to_string(path)?;
-        let pack: RulePack = ron::from_str(&text).map_err(|e| ConfigError::Parse(e.to_string()))?;
+        // implicit_some lets packs write `bond_create: ( strength: k )`
+        // instead of RON's literal `Some((...))`.
+        let options = ron::Options::default()
+            .with_default_extension(ron::extensions::Extensions::IMPLICIT_SOME);
+        let pack: RulePack = options
+            .from_str(&text)
+            .map_err(|e| ConfigError::Parse(e.to_string()))?;
         pack.validate()?;
         Ok(pack)
     }
@@ -130,6 +151,17 @@ impl RulePack {
             ] {
                 if !(v >= 0.0 && v.is_finite()) {
                     return err(format!("transfer.{name} must be >= 0 and finite, got {v}"));
+                }
+            }
+            if let Some(bond) = rule.bond_create {
+                if rule.bond_break {
+                    return err("bond_create and bond_break are mutually exclusive".into());
+                }
+                if !(bond.strength > 0.0 && bond.strength.is_finite()) {
+                    return err(format!(
+                        "bond_create.strength must be positive and finite, got {}",
+                        bond.strength
+                    ));
                 }
             }
             for (name, b) in [
@@ -177,6 +209,8 @@ impl RulePack {
                         energy: 0.05,
                         ..Default::default()
                     },
+                    bond_create: None,
+                    bond_break: false,
                 },
                 RuleSpec {
                     radius: 4.0,
@@ -199,6 +233,8 @@ impl RulePack {
                         matter: 0.01,
                         ..Default::default()
                     },
+                    bond_create: None,
+                    bond_break: false,
                 },
             ],
         }
@@ -217,6 +253,33 @@ mod tests {
         assert_eq!(rule.self_cond.matter.min, f32::NEG_INFINITY);
         assert_eq!(rule.self_cond.matter.max, f32::INFINITY);
         assert_eq!(rule.transfer.energy, 0.0);
+    }
+
+    #[test]
+    fn bond_fields_parse_and_validate() {
+        let dir = std::env::temp_dir().join(format!("genesis-bond-rules-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("bonds.ron");
+        std::fs::write(
+            &path,
+            "(rules: [
+                (radius: 3.0, probability: 0.2, bond_create: (strength: 4.0)),
+                (radius: 8.0, probability: 0.01, bond_break: true),
+            ])",
+        )
+        .unwrap();
+        let pack = RulePack::load(&path).unwrap();
+        assert_eq!(pack.rules[0].bond_create.unwrap().strength, 4.0);
+        assert!(pack.rules[1].bond_break);
+        std::fs::remove_dir_all(&dir).ok();
+
+        let mut bad = pack.clone();
+        bad.rules[0].bond_break = true; // create + break on one rule
+        assert!(bad.validate().is_err());
+
+        let mut bad = pack.clone();
+        bad.rules[0].bond_create = Some(BondCreateSpec { strength: 0.0 });
+        assert!(bad.validate().is_err());
     }
 
     #[test]
