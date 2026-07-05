@@ -8,8 +8,9 @@ use std::process::ExitCode;
 use std::time::Instant;
 
 use clap::{Parser, Subcommand};
-use genesis_config::SimConfig;
+use genesis_config::{RulePack, SimConfig};
 use genesis_sim::Simulation;
+use genesis_sim::interact::RuleSet;
 
 #[derive(Parser)]
 #[command(name = "genesis", about = "Project Genesis headless simulation")]
@@ -25,6 +26,10 @@ enum Command {
         /// RON config file; defaults are used when omitted.
         #[arg(long)]
         config: Option<PathBuf>,
+        /// RON rule pack; no interactions when omitted. Part of replay
+        /// identity — a different pack is a different universe.
+        #[arg(long)]
+        rules: Option<PathBuf>,
         #[arg(long, default_value_t = 1000)]
         ticks: u64,
         /// Resume from a save file instead of creating a fresh world.
@@ -46,6 +51,9 @@ enum Command {
     Verify {
         #[arg(long)]
         config: Option<PathBuf>,
+        /// RON rule pack to verify with (interactions active).
+        #[arg(long)]
+        rules: Option<PathBuf>,
         #[arg(long, default_value_t = 1000)]
         ticks: u64,
     },
@@ -61,6 +69,8 @@ enum Command {
     },
     /// Write a default config file to the given path.
     InitConfig { path: PathBuf },
+    /// Write an example rule pack to the given path.
+    InitRules { path: PathBuf },
 }
 
 fn main() -> ExitCode {
@@ -87,6 +97,13 @@ fn load_config(path: &Option<PathBuf>) -> Result<SimConfig, Box<dyn std::error::
     }
 }
 
+fn load_rules(path: &Option<PathBuf>) -> Result<RuleSet, Box<dyn std::error::Error>> {
+    match path {
+        Some(p) => Ok(RuleSet::compile(&RulePack::load(p)?)),
+        None => Ok(RuleSet::default()),
+    }
+}
+
 /// Size the global rayon pool (0 = rayon's default, all cores). Thread count
 /// is a scheduling knob only — it never appears in replay identity.
 fn init_thread_pool(threads: usize) -> Result<(), Box<dyn std::error::Error>> {
@@ -102,6 +119,7 @@ fn run(cli: Cli) -> Result<ExitCode, Box<dyn std::error::Error>> {
     match cli.command {
         Command::Run {
             config,
+            rules,
             ticks,
             load,
             save,
@@ -110,8 +128,15 @@ fn run(cli: Cli) -> Result<ExitCode, Box<dyn std::error::Error>> {
         } => {
             init_thread_pool(threads)?;
             let mut sim = match load {
-                Some(path) => Simulation::from_snapshot(&genesis_persist::load_from_file(&path)?),
-                None => Simulation::new(&load_config(&config)?),
+                Some(path) => {
+                    if rules.is_some() {
+                        return Err("--rules cannot be combined with --load: the rule set \
+                                    is part of the save's replay identity"
+                            .into());
+                    }
+                    Simulation::from_snapshot(&genesis_persist::load_from_file(&path)?)
+                }
+                None => Simulation::with_rules(&load_config(&config)?, load_rules(&rules)?),
             };
 
             let start = Instant::now();
@@ -144,11 +169,16 @@ fn run(cli: Cli) -> Result<ExitCode, Box<dyn std::error::Error>> {
             Ok(ExitCode::SUCCESS)
         }
 
-        Command::Verify { config, ticks } => {
+        Command::Verify {
+            config,
+            rules,
+            ticks,
+        } => {
             let config = load_config(&config)?;
+            let rule_set = load_rules(&rules)?;
 
             let run_hash = |ticks: u64| {
-                let mut sim = Simulation::new(&config);
+                let mut sim = Simulation::with_rules(&config, rule_set.clone());
                 for _ in 0..ticks {
                     sim.tick();
                 }
@@ -227,6 +257,12 @@ fn run(cli: Cli) -> Result<ExitCode, Box<dyn std::error::Error>> {
         Command::InitConfig { path } => {
             SimConfig::default().save(&path)?;
             println!("wrote default config to {}", path.display());
+            Ok(ExitCode::SUCCESS)
+        }
+
+        Command::InitRules { path } => {
+            RulePack::example().save(&path)?;
+            println!("wrote example rule pack to {}", path.display());
             Ok(ExitCode::SUCCESS)
         }
     }

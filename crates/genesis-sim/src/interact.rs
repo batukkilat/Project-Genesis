@@ -95,6 +95,36 @@ pub struct RuleSet {
 }
 
 impl RuleSet {
+    /// Compile an authored rule pack into the internal representation. The
+    /// pack must already pass `RulePack::validate`; grid-dependent checks
+    /// (`assert_valid`) run at simulation assembly.
+    pub fn compile(pack: &genesis_config::RulePack) -> RuleSet {
+        let bounds = |b: genesis_config::BoundsSpec| Bounds {
+            min: b.min,
+            max: b.max,
+        };
+        let cond = |c: genesis_config::ConditionSpec| QuantityCondition {
+            matter: bounds(c.matter),
+            energy: bounds(c.energy),
+            information: bounds(c.information),
+        };
+        RuleSet {
+            rules: pack
+                .rules
+                .iter()
+                .map(|r| CompiledRule {
+                    radius: r.radius,
+                    self_cond: cond(r.self_cond),
+                    other_cond: cond(r.other_cond),
+                    probability: r.probability,
+                    transfer_matter: r.transfer.matter,
+                    transfer_energy: r.transfer.energy,
+                    transfer_information: r.transfer.information,
+                })
+                .collect(),
+        }
+    }
+
     pub fn hash_into(&self, h: &mut StateHasher) {
         h.write_u64(self.rules.len() as u64);
         for r in &self.rules {
@@ -420,6 +450,22 @@ mod tests {
         let before = s.energy.clone();
         apply(&mut s, &geom, &rules, 7, 0);
         assert_eq!(before, s.energy);
+    }
+
+    #[test]
+    fn compile_maps_pack_faithfully() {
+        let pack = genesis_config::RulePack::example();
+        let set = RuleSet::compile(&pack);
+        assert_eq!(set.rules.len(), pack.rules.len());
+        let r = &set.rules[0];
+        let spec = &pack.rules[0];
+        assert_eq!(r.radius, spec.radius);
+        assert_eq!(r.probability, spec.probability);
+        assert_eq!(r.self_cond.energy.min, spec.self_cond.energy.min);
+        assert_eq!(r.transfer_energy, spec.transfer.energy);
+        // Omitted bounds compile to ANY.
+        assert_eq!(r.self_cond.matter.min, f32::NEG_INFINITY);
+        assert_eq!(r.self_cond.matter.max, f32::INFINITY);
     }
 
     #[test]

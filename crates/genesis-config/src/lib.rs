@@ -3,10 +3,14 @@
 //! The configuration is part of replay identity (constitution rule 6):
 //! same version + seed + config + player actions = same simulation.
 
+pub mod rules;
+
 use std::fmt;
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
+
+pub use rules::{BoundsSpec, ConditionSpec, RulePack, RuleSpec, TransferSpec};
 
 /// Inclusive-exclusive range `[lo, hi)` used for initial particle quantities.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
