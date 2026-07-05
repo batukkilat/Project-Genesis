@@ -1,0 +1,78 @@
+(
+    rules: [
+        (
+            radius: 6.0,
+            self_cond: (
+                matter: (
+                    min: -inf,
+                    max: inf,
+                ),
+                energy: (
+                    min: 0.5,
+                    max: inf,
+                ),
+                information: (
+                    min: -inf,
+                    max: inf,
+                ),
+            ),
+            other_cond: (
+                matter: (
+                    min: -inf,
+                    max: inf,
+                ),
+                energy: (
+                    min: -inf,
+                    max: 0.5,
+                ),
+                information: (
+                    min: -inf,
+                    max: inf,
+                ),
+            ),
+            probability: 0.1,
+            transfer: (
+                matter: 0.0,
+                energy: 0.05,
+                information: 0.0,
+            ),
+        ),
+        (
+            radius: 4.0,
+            self_cond: (
+                matter: (
+                    min: -inf,
+                    max: 0.5,
+                ),
+                energy: (
+                    min: -inf,
+                    max: inf,
+                ),
+                information: (
+                    min: -inf,
+                    max: inf,
+                ),
+            ),
+            other_cond: (
+                matter: (
+                    min: 0.5,
+                    max: inf,
+                ),
+                energy: (
+                    min: -inf,
+                    max: inf,
+                ),
+                information: (
+                    min: -inf,
+                    max: inf,
+                ),
+            ),
+            probability: 0.02,
+            transfer: (
+                matter: 0.01,
+                energy: 0.0,
+                information: 0.0,
+            ),
+        ),
+    ],
+)

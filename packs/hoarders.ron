@@ -1,0 +1,32 @@
+// Hoarders: the opposite regime to diffusion.ron.
+//
+// Poor particles leak energy to rich neighbors, and light particles leak
+// matter to heavy ones — positive feedback instead of equalization.
+// Expected long-run behavior: inequality amplifies until a few particles
+// concentrate most of the energy and mass in their neighborhood. Whether
+// stable hoards form or the world churns is seed-dependent — that is the
+// point.
+//
+// Both packs use the same engine and the same conservation laws; only the
+// direction of the gradient differs. Run both from the same seed to see how
+// much universe follows from one sign flip.
+(
+    rules: [
+        // Poor initiator leaks energy to any richer neighbor.
+        (
+            radius: 6.0,
+            self_cond: ( energy: ( max: 0.6 ) ),
+            other_cond: ( energy: ( min: 0.6 ) ),
+            probability: 0.08,
+            transfer: ( energy: 0.04 ),
+        ),
+        // Light initiator leaks matter to heavy neighbors (accretion feedback).
+        (
+            radius: 4.0,
+            self_cond: ( matter: ( max: 0.5 ) ),
+            other_cond: ( matter: ( min: 0.5 ) ),
+            probability: 0.03,
+            transfer: ( matter: 0.015 ),
+        ),
+    ],
+)
