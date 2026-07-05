@@ -6,7 +6,7 @@
 //!
 //! ```text
 //! magic            [u8; 4]  = b"GENS"
-//! format_version   u32      = 4
+//! format_version   u32      = 5
 //! engine_version   u16 len + utf-8 bytes (informational)
 //! tick             u64
 //! rng_state        u64
@@ -21,9 +21,11 @@
 //! repulsion        f32
 //! attraction       f32
 //! bond_rest_length f32      (v4: bonds joined replay identity)
+//! information_decay f32     (v5: information semantics joined replay identity)
 //! rule_count       u32      (v3: interaction rules joined replay identity)
-//! rules            rule_count * 19 f32 (CompiledRule::fields order; v4
-//!                           appended bond action code + strength)
+//! rules            rule_count * 22 f32 (CompiledRule::fields order; v4
+//!                           appended bond action code + strength; v5
+//!                           appended info-copy flag + cost + noise)
 //! particle_count   u64
 //! particles        count * (id u64, pos f32*2, vel f32*2, matter f32,
 //!                           energy f32, information f32), sorted by id
@@ -40,7 +42,7 @@ use genesis_sim::interact::CompiledRule;
 use genesis_sim::snapshot::{BondSnap, ParticleSnap, WorldSnapshot};
 
 pub const MAGIC: [u8; 4] = *b"GENS";
-pub const FORMAT_VERSION: u32 = 4;
+pub const FORMAT_VERSION: u32 = 5;
 
 #[derive(Debug)]
 pub enum SaveError {
@@ -96,6 +98,7 @@ pub fn save_to_writer(snap: &WorldSnapshot, w: &mut impl Write) -> Result<(), Sa
     w.write_all(&snap.repulsion.to_le_bytes())?;
     w.write_all(&snap.attraction.to_le_bytes())?;
     w.write_all(&snap.bond_rest_length.to_le_bytes())?;
+    w.write_all(&snap.information_decay.to_le_bytes())?;
 
     w.write_all(&(snap.rules.len() as u32).to_le_bytes())?;
     for rule in &snap.rules {
@@ -156,11 +159,12 @@ pub fn load_from_reader(r: &mut impl Read) -> Result<WorldSnapshot, SaveError> {
     let repulsion = read_f32(r)?;
     let attraction = read_f32(r)?;
     let bond_rest_length = read_f32(r)?;
+    let information_decay = read_f32(r)?;
 
     let rule_count = read_u32(r)?;
     let mut rules = Vec::with_capacity(rule_count.min(1 << 20) as usize);
     for _ in 0..rule_count {
-        let mut fields = [0.0f32; 19];
+        let mut fields = [0.0f32; 22];
         for f in &mut fields {
             *f = read_f32(r)?;
         }
@@ -206,6 +210,7 @@ pub fn load_from_reader(r: &mut impl Read) -> Result<WorldSnapshot, SaveError> {
         repulsion,
         attraction,
         bond_rest_length,
+        information_decay,
         rules,
         particles,
         bonds,
@@ -329,6 +334,9 @@ mod tests {
                 transfer_information: 0.0,
                 bond_action: BondAction::Create,
                 bond_strength: 2.0,
+                info_copy: false,
+                info_cost: 0.0,
+                info_noise: 0.0,
             }],
         };
         let config = SimConfig {

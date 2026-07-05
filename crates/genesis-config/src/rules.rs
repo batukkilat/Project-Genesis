@@ -78,6 +78,23 @@ pub struct BondCreateSpec {
     pub strength: f32,
 }
 
+/// Lossy information copy: the initiator imprints its information value onto
+/// the other particle (overwriting it), degraded by `noise`. The initiator
+/// pays `cost` energy, which moves to the other particle so energy stays
+/// conserved; if the initiator cannot pay the full cost the entire event
+/// aborts (including its transfers). Information itself is NOT conserved —
+/// copying creates it, decay (`physics.information_decay`) destroys it.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Default)]
+#[serde(default)]
+pub struct InfoCopySpec {
+    /// Energy the initiator pays per copy (>= 0).
+    pub cost: f32,
+    /// Noise fraction in [0, 1]: the copied value is
+    /// `src * (1 + noise * u)` with `u` uniform in [-1, 1], clamped >= 0.
+    /// 0 = perfect copy.
+    pub noise: f32,
+}
+
 /// One authored rule. `radius` and `probability` are mandatory; everything
 /// else defaults to "match anything, move nothing".
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
@@ -97,6 +114,10 @@ pub struct RuleSpec {
     /// `bond_create`.
     #[serde(default)]
     pub bond_break: bool,
+    /// Copy the initiator's information onto the other particle (omitted =
+    /// no copy).
+    #[serde(default)]
+    pub info_copy: Option<InfoCopySpec>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
@@ -164,6 +185,20 @@ impl RulePack {
                     ));
                 }
             }
+            if let Some(copy) = rule.info_copy {
+                if !(copy.cost >= 0.0 && copy.cost.is_finite()) {
+                    return err(format!(
+                        "info_copy.cost must be >= 0 and finite, got {}",
+                        copy.cost
+                    ));
+                }
+                if !(0.0..=1.0).contains(&copy.noise) {
+                    return err(format!(
+                        "info_copy.noise must be in [0, 1], got {}",
+                        copy.noise
+                    ));
+                }
+            }
             for (name, b) in [
                 ("self_cond.matter", rule.self_cond.matter),
                 ("self_cond.energy", rule.self_cond.energy),
@@ -211,6 +246,7 @@ impl RulePack {
                     },
                     bond_create: None,
                     bond_break: false,
+                    info_copy: None,
                 },
                 RuleSpec {
                     radius: 4.0,
@@ -235,6 +271,7 @@ impl RulePack {
                     },
                     bond_create: None,
                     bond_break: false,
+                    info_copy: None,
                 },
             ],
         }
@@ -279,6 +316,38 @@ mod tests {
 
         let mut bad = pack.clone();
         bad.rules[0].bond_create = Some(BondCreateSpec { strength: 0.0 });
+        assert!(bad.validate().is_err());
+    }
+
+    #[test]
+    fn info_copy_fields_parse_and_validate() {
+        let dir = std::env::temp_dir().join(format!("genesis-copy-rules-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("copy.ron");
+        std::fs::write(
+            &path,
+            "(rules: [
+                (radius: 6.0, probability: 0.1, info_copy: (cost: 0.05, noise: 0.2)),
+            ])",
+        )
+        .unwrap();
+        let pack = RulePack::load(&path).unwrap();
+        assert_eq!(pack.rules[0].info_copy.unwrap().cost, 0.05);
+        assert_eq!(pack.rules[0].info_copy.unwrap().noise, 0.2);
+        std::fs::remove_dir_all(&dir).ok();
+
+        let mut bad = pack.clone();
+        bad.rules[0].info_copy = Some(InfoCopySpec {
+            cost: -1.0,
+            noise: 0.0,
+        });
+        assert!(bad.validate().is_err());
+
+        let mut bad = pack.clone();
+        bad.rules[0].info_copy = Some(InfoCopySpec {
+            cost: 0.0,
+            noise: 1.5,
+        });
         assert!(bad.validate().is_err());
     }
 

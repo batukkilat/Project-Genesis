@@ -1,0 +1,31 @@
+// Echoes: information spreads by lossy imprint.
+//
+// Info-rich particles overwrite blank neighbors' information with a noisy
+// copy of their own, paying a small energy cost (the payment moves to the
+// receiver, so energy stays conserved). Information itself is NOT conserved:
+// copying creates it, and `physics.information_decay` (config, not pack)
+// erodes it. With decay on, a pattern persists only while enough energy
+// flows to keep re-imprinting it — persistence must be earned.
+//
+// Needs a config whose `initial.information` range is not all-zero
+// (e.g. 0.0..1.0); with no information anywhere the imprint rule never fires.
+(
+    rules: [
+        // Imprint: information-rich, fueled particles copy onto blank neighbors.
+        (
+            radius: 6.0,
+            self_cond: ( information: ( min: 0.5 ), energy: ( min: 0.1 ) ),
+            other_cond: ( information: ( max: 0.5 ) ),
+            probability: 0.1,
+            info_copy: ( cost: 0.02, noise: 0.1 ),
+        ),
+        // Fuel: energy diffuses rich -> poor so imprinting can keep running.
+        (
+            radius: 6.0,
+            self_cond: ( energy: ( min: 0.5 ) ),
+            other_cond: ( energy: ( max: 0.5 ) ),
+            probability: 0.05,
+            transfer: ( energy: 0.03 ),
+        ),
+    ],
+)

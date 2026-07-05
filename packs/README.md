@@ -18,6 +18,7 @@ genesis init-rules my-pack.ron   # writes a starter pack to edit
 | `diffusion.ron` | equalizing — energy flows rich→poor, matter drifts light→heavy slowly | gradients flatten; quantities spread |
 | `hoarders.ron` | amplifying — energy flows poor→rich, matter light→heavy | inequality concentrates; hoards emerge (or churn — seed-dependent) |
 | `chains.ron` | binding — energetic close pairs bond into springs, rare spontaneous breaks | multi-particle structures that persist against churn (chains, rings, blobs — seed-dependent) |
+| `echoes.ron` | imprinting — info-rich particles copy information onto blank neighbors at an energy cost | information fronts spread and compete; with `information_decay` on, only re-imprinted patterns persist |
 
 Authoring notes:
 
@@ -31,5 +32,10 @@ Authoring notes:
   `k` and rest length `physics.bond_rest_length`; creating an existing bond
   is a no-op (bonds never stack). `bond_break: true` removes the pair's bond
   if present. A rule may do one or the other, not both.
+- `info_copy: ( cost: c, noise: n )` overwrites the other particle's
+  information with the initiator's value degraded by up to ±n (fraction,
+  0..1). The initiator pays `c` energy to the receiver; if it cannot pay,
+  the entire event aborts, transfers included. Information is deliberately
+  not conserved — copies create it, `physics.information_decay` destroys it.
 - No biology, no win conditions. Packs describe how quantities move; whatever
   structure appears, emerges.

@@ -77,7 +77,7 @@ fn sim_step(
     bonds.rebuild(&store);
     physics::forces(&mut store, &geom, &params.physics, &bonds);
     interact::apply(&mut store, &mut bonds, &geom, &rules, stream_seed.0, tick.0);
-    physics::integrate(&mut store, &geom, params.dt);
+    physics::integrate(&mut store, &geom, &params.physics, params.dt);
 }
 
 pub struct Simulation {
@@ -160,6 +160,7 @@ impl Simulation {
                 repulsion: snap.repulsion,
                 attraction: snap.attraction,
                 bond_rest_length: snap.bond_rest_length,
+                information_decay: snap.information_decay,
             },
         };
         let mut store = ParticleStore::default();
@@ -289,6 +290,7 @@ impl Simulation {
             repulsion: params.physics.repulsion,
             attraction: params.physics.attraction,
             bond_rest_length: params.physics.bond_rest_length,
+            information_decay: params.physics.information_decay,
             rules,
             particles,
             bonds,
@@ -417,14 +419,38 @@ mod tests {
                 transfer_information: 0.01,
                 bond_action: interact::BondAction::None,
                 bond_strength: 0.0,
+                info_copy: false,
+                info_cost: 0.0,
+                info_noise: 0.0,
             }],
         }
     }
 
-    /// Transfers plus a bonding rule and a rarer break rule — exercises the
-    /// full Phase 3 pipeline including bond mutation every tick.
+    /// Transfers plus bonding, breaking, and a lossy info copy — exercises
+    /// the full Phase 3 pipeline every tick.
     fn bonding_rules() -> RuleSet {
         let mut set = test_rules();
+        set.rules.push(interact::CompiledRule {
+            radius: 6.0,
+            self_cond: interact::QuantityCondition {
+                matter: interact::Bounds::ANY,
+                energy: interact::Bounds::ANY,
+                information: interact::Bounds {
+                    min: 0.3,
+                    max: f32::INFINITY,
+                },
+            },
+            other_cond: interact::QuantityCondition::ANY,
+            probability: 0.1,
+            transfer_matter: 0.0,
+            transfer_energy: 0.0,
+            transfer_information: 0.0,
+            bond_action: interact::BondAction::None,
+            bond_strength: 0.0,
+            info_copy: true,
+            info_cost: 0.02,
+            info_noise: 0.25,
+        });
         set.rules.push(interact::CompiledRule {
             radius: 4.0,
             self_cond: interact::QuantityCondition::ANY,
@@ -435,6 +461,9 @@ mod tests {
             transfer_information: 0.0,
             bond_action: interact::BondAction::Create,
             bond_strength: 3.0,
+            info_copy: false,
+            info_cost: 0.0,
+            info_noise: 0.0,
         });
         set.rules.push(interact::CompiledRule {
             radius: 8.0,
@@ -446,6 +475,9 @@ mod tests {
             transfer_information: 0.0,
             bond_action: interact::BondAction::Break,
             bond_strength: 0.0,
+            info_copy: false,
+            info_cost: 0.0,
+            info_noise: 0.0,
         });
         set
     }
@@ -511,6 +543,66 @@ mod tests {
             resumed.tick();
         }
         assert_eq!(a.state_hash(), resumed.state_hash());
+    }
+
+    #[test]
+    fn info_copy_creates_information_and_conserves_the_rest() {
+        // Under copy rules information is deliberately non-conserved (it is
+        // created by paying energy) while matter and energy stay conserved.
+        let mut sim = Simulation::with_rules(&test_config(), bonding_rules());
+        let totals = |s: &WorldSnapshot| {
+            let m: f64 = s.particles.iter().map(|p| p.matter as f64).sum();
+            let e: f64 = s.particles.iter().map(|p| p.energy as f64).sum();
+            let i: f64 = s.particles.iter().map(|p| p.information as f64).sum();
+            (m, e, i)
+        };
+        let (m0, e0, i0) = totals(&sim.snapshot());
+        for _ in 0..200 {
+            sim.tick();
+        }
+        let (m1, e1, i1) = totals(&sim.snapshot());
+        assert!(((m1 - m0) / m0).abs() < 1e-4, "matter leaked: {m0} -> {m1}");
+        assert!(
+            ((e1 - e0) / e0.max(1.0)).abs() < 1e-4,
+            "energy leaked: {e0} -> {e1}"
+        );
+        assert!(
+            (i1 - i0).abs() / i0.max(1.0) > 1e-3,
+            "copy rules ran 200 ticks yet information total barely moved \
+             ({i0} -> {i1}) — copy action probably never fired"
+        );
+    }
+
+    #[test]
+    fn information_decays_at_configured_rate() {
+        let mut config = test_config();
+        config.physics.information_decay = 0.5; // per second; dt = 1/60
+        let mut sim = Simulation::new(&config);
+        let before = sim.snapshot();
+        let ticks = 30;
+        for _ in 0..ticks {
+            sim.tick();
+        }
+        let after = sim.snapshot();
+        // Physics without rules never touches information except decay, so
+        // each particle's value is exactly `info * factor^ticks` in f32.
+        let factor = 1.0f32 - 0.5 * config.dt();
+        for (b, a) in before.particles.iter().zip(&after.particles) {
+            let mut expect = b.information;
+            for _ in 0..ticks {
+                expect *= factor;
+            }
+            assert_eq!(a.information, expect, "particle {}", b.id);
+        }
+
+        // Decay is replay identity: resume mid-decay stays bit-identical.
+        let mut resumed = Simulation::from_snapshot(&sim.snapshot());
+        let mut uninterrupted = sim;
+        for _ in 0..30 {
+            uninterrupted.tick();
+            resumed.tick();
+        }
+        assert_eq!(uninterrupted.state_hash(), resumed.state_hash());
     }
 
     #[test]

@@ -56,6 +56,10 @@ pub struct PhysicsParams {
     /// toward this separation with force `strength * (r - rest_length)`;
     /// the per-bond strength is the spring stiffness.
     pub bond_rest_length: f32,
+    /// Exponential decay rate of the information quantity, per simulated
+    /// second (0 = no decay). Information is deliberately not conserved:
+    /// copy actions create it, this destroys it (decisions log, 2026-07-05).
+    pub information_decay: f32,
 }
 
 impl Default for PhysicsParams {
@@ -66,6 +70,7 @@ impl Default for PhysicsParams {
             repulsion: 40.0,
             attraction: 5.0,
             bond_rest_length: 3.0,
+            information_decay: 0.0,
         }
     }
 }
@@ -198,6 +203,20 @@ impl SimConfig {
                 "bond_rest_length must be >= 0 and finite".into(),
             ));
         }
+        if p.information_decay < 0.0 || !p.information_decay.is_finite() {
+            return Err(ConfigError::Invalid(
+                "information_decay must be >= 0 and finite".into(),
+            ));
+        }
+        // Per-tick decay factor must stay in [0, 1]: a rate above 1/dt would
+        // flip information negative.
+        if p.information_decay * self.dt() > 1.0 {
+            return Err(ConfigError::Invalid(format!(
+                "information_decay {} too fast for dt {} (rate * dt must be <= 1)",
+                p.information_decay,
+                self.dt()
+            )));
+        }
         // The 3x3 neighbor-cell sweep double-counts cells unless the grid is
         // at least 3 cells in each axis.
         if (self.world_width / p.interaction_radius).floor() < 3.0
@@ -268,6 +287,17 @@ mod tests {
         let mut config = SimConfig::default();
         config.physics.core_frac = 1.5;
         assert!(config.validate().is_err());
+
+        let mut config = SimConfig::default();
+        config.physics.information_decay = -0.1;
+        assert!(config.validate().is_err());
+
+        let mut config = SimConfig::default();
+        config.physics.information_decay = 100.0; // rate * dt > 1
+        assert!(
+            config.validate().is_err(),
+            "decay faster than 1/dt must be rejected"
+        );
 
         let mut config = SimConfig::default();
         config.physics.interaction_radius = config.world_width;

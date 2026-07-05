@@ -148,36 +148,49 @@ pub fn forces(
 }
 
 /// Semi-implicit (symplectic) Euler: v += (F/m) dt, then x += v dt, wrapped.
-pub fn integrate(store: &mut ParticleStore, geom: &GridGeom, dt: f32) {
+/// Also applies information decay (`params.information_decay`, per second):
+/// information is deliberately not conserved — copy actions create it, decay
+/// destroys it (decisions log, 2026-07-05). A zero rate multiplies by
+/// exactly 1.0 and is bit-neutral.
+pub fn integrate(store: &mut ParticleStore, geom: &GridGeom, params: &PhysicsParams, dt: f32) {
     let ParticleStore {
         px,
         py,
         vx,
         vy,
         matter,
+        information,
         fx,
         fy,
         ..
     } = store;
     let world_w = geom.world_w;
     let world_h = geom.world_h;
+    // Config validation guarantees rate * dt <= 1, so the factor is in [0, 1].
+    let decay_factor = 1.0 - params.information_decay * dt;
 
     px.par_chunks_mut(par_chunk())
         .zip(py.par_chunks_mut(par_chunk()))
         .zip(vx.par_chunks_mut(par_chunk()))
         .zip(vy.par_chunks_mut(par_chunk()))
         .zip(matter.par_chunks(par_chunk()))
+        .zip(information.par_chunks_mut(par_chunk()))
         .zip(fx.par_chunks(par_chunk()))
         .zip(fy.par_chunks(par_chunk()))
-        .for_each(|((((((px_c, py_c), vx_c), vy_c), m_c), fx_c), fy_c)| {
-            for k in 0..px_c.len() {
-                let inv_m = 1.0 / m_c[k];
-                vx_c[k] += fx_c[k] * inv_m * dt;
-                vy_c[k] += fy_c[k] * inv_m * dt;
-                px_c[k] = torus::wrap(px_c[k] + vx_c[k] * dt, world_w);
-                py_c[k] = torus::wrap(py_c[k] + vy_c[k] * dt, world_h);
-            }
-        });
+        .for_each(
+            |(((((((px_c, py_c), vx_c), vy_c), m_c), info_c), fx_c), fy_c)| {
+                for k in 0..px_c.len() {
+                    let inv_m = 1.0 / m_c[k];
+                    vx_c[k] += fx_c[k] * inv_m * dt;
+                    vy_c[k] += fy_c[k] * inv_m * dt;
+                    px_c[k] = torus::wrap(px_c[k] + vx_c[k] * dt, world_w);
+                    py_c[k] = torus::wrap(py_c[k] + vy_c[k] * dt, world_h);
+                    if decay_factor != 1.0 {
+                        info_c[k] *= decay_factor;
+                    }
+                }
+            },
+        );
 }
 
 #[cfg(test)]
@@ -191,6 +204,7 @@ mod tests {
             repulsion: 40.0,
             attraction: 5.0,
             bond_rest_length: 3.0,
+            information_decay: 0.0,
         }
     }
 
