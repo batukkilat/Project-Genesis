@@ -1,0 +1,29 @@
+// Configuration used for the Phase 3 exit-criteria review
+// (docs/research/phase3-exit-review.md). Committed so the review is
+// reproducible: same seed + this config + a pack = the same universe.
+//
+// 10k particles in a 512x512 torus = ~2.4 particles per 8-unit grid cell,
+// dense enough that interaction rules actually fire. Particles start with
+// information so info-conditioned rules are live, and information decays so
+// persistence must be paid for (the regime packs/actual.ron is written for).
+(
+    seed: 20260706,
+    particle_count: 10000,
+    world_width: 512.0,
+    world_height: 512.0,
+    ticks_per_second: 60,
+    initial: (
+        matter: ( lo: 0.1, hi: 1.0 ),
+        energy: ( lo: 0.0, hi: 1.0 ),
+        information: ( lo: 0.0, hi: 1.0 ),
+        speed: ( lo: 0.0, hi: 2.0 ),
+    ),
+    physics: (
+        interaction_radius: 8.0,
+        core_frac: 0.4,
+        repulsion: 40.0,
+        attraction: 5.0,
+        bond_rest_length: 3.0,
+        information_decay: 0.02,
+    ),
+)

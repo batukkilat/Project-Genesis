@@ -3,6 +3,8 @@
 //! The simulation runs to completion here with no renderer and no AI —
 //! constitution rule 3. This binary is also the determinism test bench.
 
+mod analysis;
+
 use std::path::PathBuf;
 use std::process::ExitCode;
 use std::time::Instant;
@@ -41,6 +43,11 @@ enum Command {
         /// Print the state hash every N ticks.
         #[arg(long)]
         hash_every: Option<u64>,
+        /// Every N ticks, print read-only structure diagnostics: bond-graph
+        /// components, their persistence across samples, and quantity
+        /// totals. Diagnostics never affect the simulation.
+        #[arg(long)]
+        report: Option<u64>,
         /// Worker threads (0 = all cores). Never changes results.
         #[arg(long, default_value_t = 0)]
         threads: usize,
@@ -124,6 +131,7 @@ fn run(cli: Cli) -> Result<ExitCode, Box<dyn std::error::Error>> {
             load,
             save,
             hash_every,
+            report,
             threads,
         } => {
             init_thread_pool(threads)?;
@@ -139,6 +147,11 @@ fn run(cli: Cli) -> Result<ExitCode, Box<dyn std::error::Error>> {
                 None => Simulation::with_rules(&load_config(&config)?, load_rules(&rules)?),
             };
 
+            // A structure counts as persistent once it has survived
+            // PERSIST_AFTER consecutive report samples.
+            const PERSIST_AFTER: u32 = 5;
+            let mut tracker = analysis::StructureTracker::new(PERSIST_AFTER);
+
             let start = Instant::now();
             for i in 1..=ticks {
                 sim.tick();
@@ -150,6 +163,31 @@ fn run(cli: Cli) -> Result<ExitCode, Box<dyn std::error::Error>> {
                         "tick {:>12}  hash {:#018x}",
                         sim.tick_count(),
                         sim.state_hash()
+                    );
+                }
+                if let Some(every) = report
+                    && every > 0
+                    && i % every == 0
+                {
+                    let snap = sim.snapshot();
+                    let comps = analysis::bond_components(&snap);
+                    let stats = analysis::sample_stats(&snap, &comps);
+                    let track = tracker.observe(&comps);
+                    println!(
+                        "tick {:>10}  n {:>7}  bonds {:>6}  comps {:>5} (largest {:>4}, \
+                         in-multi {:>6})  persist>={PERSIST_AFTER} {:>4} (oldest {:>3})  \
+                         M {:.3}  E {:.3}  I {:.3}",
+                        stats.tick,
+                        stats.particles,
+                        stats.bonds,
+                        stats.components,
+                        stats.largest_component,
+                        stats.in_multi,
+                        track.persistent,
+                        track.oldest_age,
+                        stats.total_matter,
+                        stats.total_energy,
+                        stats.total_information,
                     );
                 }
             }

@@ -264,6 +264,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::field_reassign_with_default)] // mutate-one-field-per-case reads best here
     fn rejects_bad_values() {
         let mut config = SimConfig::default();
         config.ticks_per_second = 0;
