@@ -70,6 +70,9 @@ enum Command {
         particles: u64,
         #[arg(long, default_value_t = 120)]
         ticks: u64,
+        /// RON rule pack to benchmark with (physics only when omitted).
+        #[arg(long)]
+        rules: Option<PathBuf>,
         /// Worker threads (0 = all cores). Never changes results.
         #[arg(long, default_value_t = 0)]
         threads: usize,
@@ -261,6 +264,7 @@ fn run(cli: Cli) -> Result<ExitCode, Box<dyn std::error::Error>> {
         Command::Bench {
             particles,
             ticks,
+            rules,
             threads,
         } => {
             init_thread_pool(threads)?;
@@ -271,7 +275,7 @@ fn run(cli: Cli) -> Result<ExitCode, Box<dyn std::error::Error>> {
             println!("threads      {}", rayon::current_num_threads());
 
             let start = Instant::now();
-            let mut sim = Simulation::new(&config);
+            let mut sim = Simulation::with_rules(&config, load_rules(&rules)?);
             let spawn_time = start.elapsed();
 
             let start = Instant::now();
