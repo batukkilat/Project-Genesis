@@ -734,6 +734,58 @@ mod tests {
     }
 
     #[test]
+    fn information_max_caps_the_full_sim_and_is_replay_identity() {
+        // End-to-end (config -> params -> sim_step -> apply), not the direct
+        // apply() unit tests: the amplifying info_copy in bonding_rules would
+        // ratchet information upward unbounded; a low information_max clamps
+        // it. The cap sits just above the initial ceiling (info starts in
+        // [0, 1)), so a single amplifying copy already crosses it.
+        let cap = 1.2f32;
+        let mut capped = test_config();
+        capped.physics.information_max = cap;
+        let mut uncapped = test_config();
+        uncapped.physics.information_max = 1e30;
+
+        let mut sim_capped = Simulation::with_rules(&capped, bonding_rules());
+        let mut sim_uncapped = Simulation::with_rules(&uncapped, bonding_rules());
+        for _ in 0..300 {
+            sim_capped.tick();
+            sim_uncapped.tick();
+        }
+
+        // Under the cap every particle stays at or below it, and finite.
+        for p in &sim_capped.snapshot().particles {
+            assert!(
+                p.information.is_finite(),
+                "information went non-finite under the cap"
+            );
+            assert!(
+                p.information <= cap,
+                "information {} exceeded the cap {cap}",
+                p.information
+            );
+        }
+
+        // The cap is part of replay identity: differing only in
+        // information_max, the two runs diverge — which also proves the cap
+        // actually engaged (amplification crossed it).
+        assert_ne!(
+            sim_capped.state_hash(),
+            sim_uncapped.state_hash(),
+            "information_max changed nothing — cap never engaged, or it is not \
+             in replay identity"
+        );
+
+        // And it survives save/resume bit-for-bit.
+        let mut resumed = Simulation::from_snapshot(&sim_capped.snapshot());
+        for _ in 0..40 {
+            sim_capped.tick();
+            resumed.tick();
+        }
+        assert_eq!(sim_capped.state_hash(), resumed.state_hash());
+    }
+
+    #[test]
     fn information_decays_at_configured_rate() {
         let mut config = test_config();
         config.physics.information_decay = 0.5; // per second; dt = 1/60

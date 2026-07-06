@@ -300,6 +300,27 @@ mod tests {
     }
 
     #[test]
+    fn non_default_information_max_survives_the_format() {
+        // Guards the v7 header field specifically: a non-default cap must
+        // round-trip through the binary format and stay in replay identity
+        // (the stored state hash covers it, so a dropped field would trip the
+        // corruption check on load).
+        let mut config = test_config();
+        config.physics.information_max = 12.5;
+        let mut sim = Simulation::new(&config);
+        sim.tick();
+        let snap = sim.snapshot();
+        assert_eq!(snap.information_max, 12.5);
+
+        let mut bytes = Vec::new();
+        save_to_writer(&snap, &mut bytes).unwrap();
+        let back = load_from_reader(&mut bytes.as_slice()).unwrap();
+        assert_eq!(back.information_max, 12.5);
+        assert_eq!(snap, back);
+        assert_eq!(snap.state_hash(), back.state_hash());
+    }
+
+    #[test]
     fn save_load_continue_matches_uninterrupted() {
         let config = test_config();
         let mut uninterrupted = Simulation::new(&config);
