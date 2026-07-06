@@ -15,8 +15,9 @@ from ~4·10³ to ~4·10⁸ within 750 ticks and to **NaN** by tick 2000 —
 individual values overflow to `+inf`, and the first `inf − inf` in a
 transfer produces NaN, which then spreads by copy. Matter
 and energy are unaffected, and NaN comparisons simply stop info-conditioned
-rules from firing. Determinism is verified pre-transition (600-tick
-verify); a verify run crossing the NaN tick is recorded in the review doc.
+rules from firing. Determinism is verified through the transition: the 2 500-tick sandbox
+verify (crossing the NaN tick at ~2 000) produced identical hashes across
+fresh runs, save/resume, and thread counts.
 So nothing crashes — but a first-class quantity
 silently becomes meaningless, which sits badly with Sandbox mode's own rule
 ("internal consistency required") and will confuse every Observer metric

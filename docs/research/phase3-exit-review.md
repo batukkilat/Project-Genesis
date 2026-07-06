@@ -101,7 +101,7 @@ hashes compared) against the review config:
 | chains.ron | 2 000 | DETERMINISTIC | `0xdf76a421db16699a` |
 | actual.ron | 600 | DETERMINISTIC | `0xdf2f7e17dcc04bd9` |
 | sandbox.ron | 600 | DETERMINISTIC | `0xcf2d97116959dd94` |
-| sandbox.ron | 2 500 (crosses the NaN tick) | TODO(vnan) | TODO(vnan-hash) |
+| sandbox.ron | 2 500 (crosses the NaN tick) | DETERMINISTIC | `0x631251cb73fa602a` |
 
 Conservation is asserted continuously by the test suite
 (`interactions_conserve_totals`, `create_destroy_conserves_and_stays_deterministic`,
@@ -142,8 +142,8 @@ pack. No action needed for Phase 3.
   size, count, or lifetime appears anywhere in the content.
 - *Determinism still holds*: every pack verifies hash-identical across
   fresh runs, save/resume, and thread counts (chains at 2 000 ticks,
-  actual and sandbox at 600). A longer sandbox verify crossing the NaN
-  transition is recorded in the table above.
+  actual and sandbox at 600) — and the 2 500-tick sandbox verify proves
+  the property survives even the f32 info overflow into NaN.
 - *Conservation still holds*: matter and energy totals constant (exact in
   the pure-bonding run, ≤ 3·10⁻⁶ relative under heavy create/destroy
   churn), asserted continuously by the test suite.
