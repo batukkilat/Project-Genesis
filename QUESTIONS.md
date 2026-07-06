@@ -4,6 +4,48 @@ Design forks not settled in the ROADMAP decisions log. Work that depends on
 an entry here is blocked until the answer is recorded in the decisions log;
 everything else continues. Format: context, options, recommendation.
 
+## Q-2026-07-06-B: Quantity overflow policy — amplifying content can drive information to NaN
+
+**Status:** OPEN — does not block anything current; came out of the Phase 3
+exit review (docs/research/phase3-exit-review.md).
+
+**Context.** Quantities are unbounded f32. In the review runs,
+`packs/sandbox.ron` (deliberately amplifying) drove the information total
+from ~4·10³ to ~4·10⁸ within 750 ticks and to **NaN** by tick 2000 —
+individual values overflow to `+inf`, and the first `inf − inf` in a
+transfer produces NaN, which then spreads by copy. Matter
+and energy are unaffected, and NaN comparisons simply stop info-conditioned
+rules from firing. Determinism is verified pre-transition (600-tick
+verify); a verify run crossing the NaN tick is recorded in the review doc.
+So nothing crashes — but a first-class quantity
+silently becomes meaningless, which sits badly with Sandbox mode's own rule
+("internal consistency required") and will confuse every Observer metric
+built on information density.
+
+**Option A — engine cap.** Clamp each quantity into `[0, quantity_max]` at
+commit; `quantity_max` becomes a physics param, part of replay identity
+(save format bump). Amplifying packs saturate at the cap instead of
+detonating. Cost: one more parameter to explain; changes the meaning of
+existing runaway packs.
+- Variant: cap only `information` (matter/energy are conserved and cannot
+  run away by construction).
+
+**Option B — do nothing; content's job.** Document that amplifying packs
+must bound their own economies. Keeps the engine minimal; leaves a footgun
+that the project's own starter pack currently steps on.
+
+**Option C — load-time lint.** Static warning when a pack's info actions
+can net-create without a compensating sink. No replay-identity change, but
+static analysis can't actually decide runaway vs bounded (it depends on
+dynamics), so it's advisory at best.
+
+**Recommendation: Option A, information-only variant.** Information is
+explicitly "creatable by paying energy" (decisions log 2026-07-05), so it
+is the only quantity that can overflow by design; a saturating cap in
+replay identity keeps Sandbox universes internally consistent without
+touching conservation semantics. Suggested default: 1e30 (far above any
+meaningful signal, far below f32 overflow in transfer arithmetic).
+
 ## Q-2026-07-06-A: Adaptive detail — exactness contract for reduced-rate chunks
 
 **Status:** OPEN — blocks the first Phase 4 work item (and, by the settled

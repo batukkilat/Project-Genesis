@@ -57,11 +57,11 @@ Exit criteria: millions of interacting particles; state hash identical between s
 
 Non-goals: chemistry, bonds, any interaction beyond physical forces.
 
-## Phase 3 — Interaction System and Chemistry
+## Phase 3 — Interaction System and Chemistry (done, v0.3.0)
 
 Goal: the data-driven interaction engine — the heart of emergence.
 
-Shipped so far: the full interaction action vocabulary — quantity transfers; bonds (canonical id-keyed edge list + per-tick CSR mirror per docs/research/bond-storage.md, harmonic springs, rule-driven create/break); lossy info_copy + physics.information_decay (information deliberately non-conserved); particle emit/absorb (split/merge — emissions append mid-commit, absorptions mark-dead + compact, matter+energy conserved per event, ids never reused; save format v6). All on the RON rule-pack layer with per-pair derived RNG streams. Two-packs-one-engine deliverable shipped: packs/actual.ron (conservation-respecting) vs packs/sandbox.ron (amplifying), same engine, both verified deterministic from the same seed. Remaining: Phase 3 exit-criteria review (persistent uncoded structures — needs observation, candidate for Phase 5 tooling or a manual long-run check).
+Shipped: the full interaction action vocabulary — quantity transfers; bonds (canonical id-keyed edge list + per-tick CSR mirror per docs/research/bond-storage.md, harmonic springs, rule-driven create/break); lossy info_copy + physics.information_decay (information deliberately non-conserved); particle emit/absorb (split/merge — emissions append mid-commit, absorptions mark-dead + compact, matter+energy conserved per event, ids never reused; save format v6). All on the RON rule-pack layer with per-pair derived RNG streams. Two-packs-one-engine deliverable shipped: packs/actual.ron (conservation-respecting) vs packs/sandbox.ron (amplifying), same engine, both verified deterministic from the same seed. Exit-criteria review passed 2026-07-06 (docs/research/phase3-exit-review.md): chains.ron produces ~160 persistent multi-particle structures over 20k ticks (oldest keeps identity 19.5k ticks), all packs verify deterministic (fresh/resume/thread-count), conservation exact; f32 info overflow under amplifying content raised as QUESTIONS.md Q-2026-07-06-B. Read-only structure diagnostics live in `genesis run --report N`.
 
 Deliverables:
 

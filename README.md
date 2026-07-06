@@ -6,7 +6,7 @@ An Artificial Life Research Sandbox: the emergence of complexity from first prin
 > Simulate possibility.
 
 - **[Prompts/MASTER_PROMPT.md](Prompts/MASTER_PROMPT.md)** — the constitution: vision, immutable rules, architecture.
-- **[ROADMAP.md](ROADMAP.md)** — the phased plan (canonical). Phases 1–2 complete; currently: Phase 3 (interactions & chemistry).
+- **[ROADMAP.md](ROADMAP.md)** — the phased plan (canonical). Phases 1–3 complete; next: Phase 4 (environment & planet), first item blocked on [QUESTIONS.md](QUESTIONS.md).
 - **[Prompts/spec/](Prompts/spec)** — per-system specifications.
 - **[packs/](packs)** — authored interaction rule packs (RON); a pack is content, not code.
 
@@ -14,7 +14,8 @@ An Artificial Life Research Sandbox: the emergence of complexity from first prin
 
 - **Phase 1 — Foundation**: workspace, deterministic RNG (SplitMix64 + order-free derived streams), state hashing, fixed-timestep ECS loop, versioned saves. ✅
 - **Phase 2 — Physics & space**: torus world, canonical (cell, id) SoA layout, generic short-range kernel, chunk-parallel forces with thread-count-invariant hashes (proven at 1M particles — [BASELINES.md](BASELINES.md)). ✅
-- **Phase 3 — Interactions & chemistry** (in progress): data-driven rule engine (condition → probability → action), quantity transfers, RON rule-pack authoring, bonds (canonical edge list + per-tick CSR mirror, harmonic spring forces, rule-driven create/break), lossy information copy + decay (information deliberately non-conserved), particle emit/absorb (split/merge, conserved per event, ids never reused). Two-regime demo shipped (packs/actual.ron vs packs/sandbox.ron — same engine, opposite economies). Remaining: exit-criteria review.
+- **Phase 3 — Interactions & chemistry**: data-driven rule engine (condition → probability → action), quantity transfers, RON rule-pack authoring, bonds (canonical edge list + per-tick CSR mirror, harmonic spring forces, rule-driven create/break), lossy information copy + decay (information deliberately non-conserved), particle emit/absorb (split/merge, conserved per event, ids never reused). Two-regime demo (packs/actual.ron vs packs/sandbox.ron — same engine, opposite economies). Exit review passed ([docs/research/phase3-exit-review.md](docs/research/phase3-exit-review.md)): persistent uncoded structures over 20k ticks, deterministic and conserved throughout. ✅
+- **Phase 4 — Environment & planet** (next): first item (adaptive-detail groundwork) awaits a decision on [QUESTIONS.md](QUESTIONS.md) Q-2026-07-06-A.
 
 ## Workspace
 
@@ -23,8 +24,8 @@ An Artificial Life Research Sandbox: the emergence of complexity from first prin
 | `genesis-core` | Primitives: particle id, 2D vector, torus math, deterministic RNG, state hash. Dependency-free. |
 | `genesis-sim` | ECS world (Bevy ECS, headless): physics kernel, interaction engine, bond storage, snapshots. |
 | `genesis-config` | RON simulation config + rule-pack authoring schema, validated; part of replay identity. |
-| `genesis-persist` | Versioned binary save/load with integrity hash (format v4: physics params, rules, bonds). |
-| `genesis-headless` | CLI: run, verify determinism, bench, init-config, init-rules. |
+| `genesis-persist` | Versioned binary save/load with integrity hash (format v6: physics params, rules, bonds, dynamic population). |
+| `genesis-headless` | CLI: run (with `--report` structure diagnostics), verify determinism, bench, init-config, init-rules. |
 
 ## Quick start
 

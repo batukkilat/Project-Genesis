@@ -554,7 +554,7 @@ dependencies = [
 
 [[package]]
 name = "genesis-config"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "ron",
  "serde",
@@ -562,11 +562,11 @@ dependencies = [
 
 [[package]]
 name = "genesis-core"
-version = "0.2.0"
+version = "0.3.0"
 
 [[package]]
 name = "genesis-headless"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "clap",
  "genesis-config",
@@ -580,7 +580,7 @@ dependencies = [
 
 [[package]]
 name = "genesis-persist"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "genesis-config",
  "genesis-core",
@@ -590,7 +590,7 @@ dependencies = [
 
 [[package]]
 name = "genesis-sim"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "bevy_ecs",
  "genesis-config",

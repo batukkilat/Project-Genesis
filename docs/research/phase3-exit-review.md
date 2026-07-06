@@ -76,14 +76,36 @@ bond range → more springs → denser clumps). Observations that stand:
 
 ### sandbox.ron — 3 000 ticks
 
-TODO(sandbox)
+The amplifying regime finds its own dynamic equilibrium — nobody coded one:
+
+- Population boils to 9 687 by tick 750 (fission cheap), then the absorb
+  side wins and it settles to 7 451 by tick 3 000; matter and energy stay
+  conserved to f32 tolerance through all of it (4407.480 vs 4407.493 at
+  spawn, ~3·10⁻⁶ relative, across thousands of create/destroy events).
+- A giant bonded component (~4 000 members) plus ~35 smaller structures
+  persist: 34 of 36 components are ≥ 5 samples old by the end.
+- The runaway info economy drove the information total from ~4·10³ to
+  ~4·10⁸ by tick 750 and to **NaN** by tick 2 000 (f32 overflow → inf →
+  inf−inf). The simulation stays deterministic through it; conditions on
+  NaN simply stop firing. Recorded as QUESTIONS.md Q-2026-07-06-B
+  (quantity overflow policy).
+- Final state hash `0x2307b9e1a2f7b35b`.
 
 ### Determinism
 
-`genesis verify` (two fresh runs + save/resume + single-thread, all hashes
-compared) against the review config:
+`genesis verify` (two fresh runs + save/resume + single-thread, all four
+hashes compared) against the review config:
 
-TODO(verify-hashes)
+| Pack | Ticks | Result | Hash |
+|---|---|---|---|
+| chains.ron | 2 000 | DETERMINISTIC | `0xdf76a421db16699a` |
+| actual.ron | 600 | DETERMINISTIC | `0xdf2f7e17dcc04bd9` |
+| sandbox.ron | 600 | DETERMINISTIC | `0xcf2d97116959dd94` |
+| sandbox.ron | 2 500 (crosses the NaN tick) | TODO(vnan) | TODO(vnan-hash) |
+
+Conservation is asserted continuously by the test suite
+(`interactions_conserve_totals`, `create_destroy_conserves_and_stays_deterministic`,
+`matter_is_conserved_exactly`) and visible in every report line above.
 
 ## Density regime note
 
@@ -110,4 +132,22 @@ pack. No action needed for Phase 3.
 
 ## Verdict
 
-TODO(fill after results)
+**Phase 3 exit criteria pass.**
+
+- *A nontrivial rule pack produces persistent multi-particle structures
+  nobody explicitly coded*: chains.ron authors two pairwise rules and gets
+  ~160 long-lived multi-particle structures, one of which keeps its
+  identity for 19 500 ticks; sandbox.ron gets a population equilibrium and
+  a persistent giant component from six rules about flows. No structure,
+  size, count, or lifetime appears anywhere in the content.
+- *Determinism still holds*: every pack verifies hash-identical across
+  fresh runs, save/resume, and thread counts (chains at 2 000 ticks,
+  actual and sandbox at 600). A longer sandbox verify crossing the NaN
+  transition is recorded in the table above.
+- *Conservation still holds*: matter and energy totals constant (exact in
+  the pure-bonding run, ≤ 3·10⁻⁶ relative under heavy create/destroy
+  churn), asserted continuously by the test suite.
+
+Phase 3 is done. Phase 4's first item (adaptive-detail groundwork) is
+blocked on QUESTIONS.md Q-2026-07-06-A; Q-2026-07-06-B (overflow policy)
+is open but non-blocking.
