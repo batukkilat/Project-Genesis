@@ -37,6 +37,9 @@ Notes:
 - Physics thread-count invariance re-confirmed on this box at 1M (4-thread
   and 1-thread hashes identical). Pack rows are single runs; their
   determinism is covered per-pack by `genesis verify` in the exit review.
+- Hashes above predate the `information_max` cap (save format v7): pack
+  rows re-run on a current build will hash differently (still
+  deterministically). Throughput ratios are unaffected.
 
 ## Phase 2 (2026-07-05)
 
