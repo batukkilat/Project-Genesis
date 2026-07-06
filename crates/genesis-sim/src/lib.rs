@@ -86,6 +86,7 @@ fn sim_step(
         stream_seed.0,
         tick.0,
         &mut next_id.0,
+        params.physics.information_max,
     );
     physics::integrate(&mut store, &geom, &params.physics, params.dt);
 }
@@ -171,6 +172,7 @@ impl Simulation {
                 attraction: snap.attraction,
                 bond_rest_length: snap.bond_rest_length,
                 information_decay: snap.information_decay,
+                information_max: snap.information_max,
             },
         };
         let mut store = ParticleStore::default();
@@ -301,6 +303,7 @@ impl Simulation {
             attraction: params.physics.attraction,
             bond_rest_length: params.physics.bond_rest_length,
             information_decay: params.physics.information_decay,
+            information_max: params.physics.information_max,
             rules,
             particles,
             bonds,

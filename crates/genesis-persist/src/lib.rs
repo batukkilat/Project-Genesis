@@ -6,7 +6,7 @@
 //!
 //! ```text
 //! magic            [u8; 4]  = b"GENS"
-//! format_version   u32      = 6
+//! format_version   u32      = 7
 //! engine_version   u16 len + utf-8 bytes (informational)
 //! tick             u64
 //! rng_state        u64
@@ -22,6 +22,7 @@
 //! attraction       f32
 //! bond_rest_length f32      (v4: bonds joined replay identity)
 //! information_decay f32     (v5: information semantics joined replay identity)
+//! information_max   f32      (v7: information overflow cap, Q-2026-07-06-B)
 //! rule_count       u32      (v3: interaction rules joined replay identity)
 //! rules            rule_count * 28 f32 (CompiledRule::fields order; v4
 //!                           appended bond action code + strength; v5
@@ -43,7 +44,7 @@ use genesis_sim::interact::CompiledRule;
 use genesis_sim::snapshot::{BondSnap, ParticleSnap, WorldSnapshot};
 
 pub const MAGIC: [u8; 4] = *b"GENS";
-pub const FORMAT_VERSION: u32 = 6;
+pub const FORMAT_VERSION: u32 = 7;
 
 #[derive(Debug)]
 pub enum SaveError {
@@ -100,6 +101,7 @@ pub fn save_to_writer(snap: &WorldSnapshot, w: &mut impl Write) -> Result<(), Sa
     w.write_all(&snap.attraction.to_le_bytes())?;
     w.write_all(&snap.bond_rest_length.to_le_bytes())?;
     w.write_all(&snap.information_decay.to_le_bytes())?;
+    w.write_all(&snap.information_max.to_le_bytes())?;
 
     w.write_all(&(snap.rules.len() as u32).to_le_bytes())?;
     for rule in &snap.rules {
@@ -161,6 +163,7 @@ pub fn load_from_reader(r: &mut impl Read) -> Result<WorldSnapshot, SaveError> {
     let attraction = read_f32(r)?;
     let bond_rest_length = read_f32(r)?;
     let information_decay = read_f32(r)?;
+    let information_max = read_f32(r)?;
 
     let rule_count = read_u32(r)?;
     let mut rules = Vec::with_capacity(rule_count.min(1 << 20) as usize);
@@ -212,6 +215,7 @@ pub fn load_from_reader(r: &mut impl Read) -> Result<WorldSnapshot, SaveError> {
         attraction,
         bond_rest_length,
         information_decay,
+        information_max,
         rules,
         particles,
         bonds,

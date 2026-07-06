@@ -47,6 +47,7 @@ pub struct WorldSnapshot {
     pub attraction: f32,
     pub bond_rest_length: f32,
     pub information_decay: f32,
+    pub information_max: f32,
     /// Active interaction rules — content, and therefore replay identity.
     pub rules: Vec<CompiledRule>,
     /// Sorted by id ascending.
@@ -73,6 +74,7 @@ impl WorldSnapshot {
         h.write_f32(self.attraction);
         h.write_f32(self.bond_rest_length);
         h.write_f32(self.information_decay);
+        h.write_f32(self.information_max);
         h.write_u64(self.rules.len() as u64);
         for rule in &self.rules {
             for v in rule.fields() {

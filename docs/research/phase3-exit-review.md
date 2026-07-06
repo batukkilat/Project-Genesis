@@ -88,7 +88,12 @@ The amplifying regime finds its own dynamic equilibrium — nobody coded one:
   ~4·10⁸ by tick 750 and to **NaN** by tick 2 000 (f32 overflow → inf →
   inf−inf). The simulation stays deterministic through it; conditions on
   NaN simply stop firing. Recorded as QUESTIONS.md Q-2026-07-06-B
-  (quantity overflow policy).
+  (quantity overflow policy). **Resolved 2026-07-06:** information is now
+  clamped to `information_max` (default 1e30) at interaction commit — save
+  format v7, decisions log Q-2026-07-06-B. Amplifying packs saturate
+  instead of reaching NaN, so the sandbox hashes below are pre-cap
+  historical values; re-running sandbox under a current build gives a
+  different (still deterministic) hash.
 - Final state hash `0x2307b9e1a2f7b35b`.
 
 ### Determinism

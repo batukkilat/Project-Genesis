@@ -18,4 +18,5 @@ clearly recommendable or the fork touches something irreversible.
   the decisions log 2026-07-06. Phase 4 unblocked.
 - **Q-2026-07-06-B** (information overflow) → Option A, information-only
   cap `information_max` in replay identity, recorded in the decisions log
-  2026-07-06. Implementation is an open work item (save format bump).
+  2026-07-06. **Implemented 2026-07-06** (save format v7): clamp at
+  interaction commit, cap in replay identity, verified deterministic.

@@ -60,6 +60,14 @@ pub struct PhysicsParams {
     /// second (0 = no decay). Information is deliberately not conserved:
     /// copy actions create it, this destroys it (decisions log, 2026-07-05).
     pub information_decay: f32,
+    /// Upper clamp on a particle's information, applied at interaction commit
+    /// (decisions log, Q-2026-07-06-B). Amplifying rules saturate here instead
+    /// of running to f32 overflow / NaN. Default 1e30 — far above any
+    /// meaningful signal, far below the f32 range where transfer arithmetic
+    /// overflows. Matter and energy are conserved by construction and stay
+    /// uncapped. Part of replay identity: a different cap is a different
+    /// universe.
+    pub information_max: f32,
 }
 
 impl Default for PhysicsParams {
@@ -71,6 +79,7 @@ impl Default for PhysicsParams {
             attraction: 5.0,
             bond_rest_length: 3.0,
             information_decay: 0.0,
+            information_max: 1e30,
         }
     }
 }
@@ -208,6 +217,14 @@ impl SimConfig {
                 "information_decay must be >= 0 and finite".into(),
             ));
         }
+        // The cap must be a finite positive value: an infinite cap would
+        // reintroduce the NaN overflow it exists to prevent, and a
+        // non-positive cap would erase all information every commit.
+        if p.information_max <= 0.0 || !p.information_max.is_finite() {
+            return Err(ConfigError::Invalid(
+                "information_max must be > 0 and finite".into(),
+            ));
+        }
         // Per-tick decay factor must stay in [0, 1]: a rate above 1/dt would
         // flip information negative.
         if p.information_decay * self.dt() > 1.0 {
@@ -298,6 +315,20 @@ mod tests {
         assert!(
             config.validate().is_err(),
             "decay faster than 1/dt must be rejected"
+        );
+
+        let mut config = SimConfig::default();
+        config.physics.information_max = 0.0;
+        assert!(
+            config.validate().is_err(),
+            "non-positive information_max must be rejected"
+        );
+
+        let mut config = SimConfig::default();
+        config.physics.information_max = f32::INFINITY;
+        assert!(
+            config.validate().is_err(),
+            "infinite information_max must be rejected (would allow NaN)"
         );
 
         let mut config = SimConfig::default();

@@ -385,6 +385,7 @@ struct Intent {
 /// store compacts once after all intents. Any intent touching a dead
 /// particle is skipped whole. Child ids come from `next_id` in commit order,
 /// so id assignment is as deterministic as everything else.
+#[allow(clippy::too_many_arguments)]
 pub fn apply(
     store: &mut ParticleStore,
     bonds: &mut crate::bonds::BondStore,
@@ -393,6 +394,7 @@ pub fn apply(
     stream_seed: u64,
     tick: u64,
     next_id: &mut u64,
+    information_max: f32,
 ) {
     if rules.rules.is_empty() || store.is_empty() {
         return;
@@ -515,7 +517,9 @@ pub fn apply(
         if rule.emit {
             let cm = rule.emit_matter_frac * store.matter[i];
             let ce = rule.emit_energy_frac * store.energy[i];
-            let ci = rule.emit_info_frac * store.information[i];
+            // Cap the child's information at birth; the parent subtracts the
+            // same (clamped) amount, so parent and child stay balanced.
+            let ci = (rule.emit_info_frac * store.information[i]).min(information_max);
             store.matter[i] -= cm;
             store.energy[i] -= ce;
             store.information[i] -= ci;
@@ -578,6 +582,15 @@ pub fn apply(
             store.information[i] += store.information[j];
             alive[j] = false;
         }
+
+        // Information overflow cap (decisions log, Q-2026-07-06-B): every
+        // information write this event touched i and/or j; clamp both so
+        // amplifying rules saturate at information_max instead of running to
+        // f32 overflow / NaN. Lower bound 0 is already held by each write's
+        // `.max(0.0)`. Matter and energy are conserved by construction and
+        // stay uncapped. A clamp on the (possibly dead) victim j is harmless.
+        store.information[i] = store.information[i].min(information_max);
+        store.information[j] = store.information[j].min(information_max);
         committed += 1;
     }
 
@@ -649,6 +662,7 @@ mod tests {
             7,
             0,
             &mut 1_000_000u64,
+            f32::INFINITY,
         );
         let total: f32 = s.energy.iter().sum();
         assert!((total - 1.0).abs() < 1e-5, "energy total changed: {total}");
@@ -678,6 +692,7 @@ mod tests {
                 7,
                 tick,
                 &mut 1_000_000u64,
+                f32::INFINITY,
             );
         }
         assert_eq!(before.0, s.energy);
@@ -723,6 +738,7 @@ mod tests {
                 7,
                 tick,
                 &mut 1_000_000u64,
+                f32::INFINITY,
             );
         }
         for i in 0..s.len() {
@@ -755,6 +771,7 @@ mod tests {
             7,
             0,
             &mut 1_000_000u64,
+            f32::INFINITY,
         );
         assert_eq!(before, s.energy);
     }
@@ -871,11 +888,29 @@ mod tests {
         let rules = RuleSet {
             rules: vec![bond_rule(BondAction::Create)],
         };
-        apply(&mut s, &mut bonds, &geom, &rules, 7, 0, &mut 1_000_000u64);
+        apply(
+            &mut s,
+            &mut bonds,
+            &geom,
+            &rules,
+            7,
+            0,
+            &mut 1_000_000u64,
+            f32::INFINITY,
+        );
         assert_eq!(bonds.len(), 1);
         assert!(bonds.contains(0, 1));
         assert_eq!(bonds.strength[0], 2.0);
-        apply(&mut s, &mut bonds, &geom, &rules, 7, 1, &mut 1_000_000u64);
+        apply(
+            &mut s,
+            &mut bonds,
+            &geom,
+            &rules,
+            7,
+            1,
+            &mut 1_000_000u64,
+            f32::INFINITY,
+        );
         assert_eq!(bonds.len(), 1);
     }
 
@@ -887,7 +922,16 @@ mod tests {
         let rules = RuleSet {
             rules: vec![bond_rule(BondAction::Break)],
         };
-        apply(&mut s, &mut bonds, &geom, &rules, 7, 0, &mut 1_000_000u64);
+        apply(
+            &mut s,
+            &mut bonds,
+            &geom,
+            &rules,
+            7,
+            0,
+            &mut 1_000_000u64,
+            f32::INFINITY,
+        );
         assert!(bonds.is_empty());
     }
 
@@ -946,6 +990,7 @@ mod tests {
             7,
             0,
             &mut 1_000_000u64,
+            f32::INFINITY,
         );
         let at = |id: u64| s.id.iter().position(|&x| x == id).unwrap();
         assert_eq!(s.information[at(0)], 0.8, "source unchanged");
@@ -972,6 +1017,7 @@ mod tests {
             7,
             0,
             &mut 1_000_000u64,
+            f32::INFINITY,
         );
         assert_eq!(s.energy, energy0, "no partial cost, no transfer");
         assert_eq!(s.information, info0, "no copy");
@@ -991,6 +1037,7 @@ mod tests {
             7,
             0,
             &mut 1_000_000u64,
+            f32::INFINITY,
         );
         let at = |id: u64| s.id.iter().position(|&x| x == id).unwrap();
         assert!((s.energy[at(0)] - 0.75).abs() < 1e-6);
@@ -998,6 +1045,58 @@ mod tests {
         let total: f32 = s.energy.iter().sum();
         assert!((total - 2.0).abs() < 1e-6, "energy conserved: {total}");
         assert_eq!(s.information[at(1)], 0.8);
+    }
+
+    #[test]
+    fn information_saturates_at_max() {
+        // A noiseless copy would set the receiver to the source's 0.8. With a
+        // cap of 0.5 both the copy target and the source (touched by the
+        // event) clamp to 0.5 instead — no overflow, no NaN.
+        let (mut s, geom) = copy_setup();
+        let rules = RuleSet {
+            rules: vec![copy_rule(0.0, 0.0)],
+        };
+        apply(
+            &mut s,
+            &mut bonds_scratch(),
+            &geom,
+            &rules,
+            7,
+            0,
+            &mut 1_000_000u64,
+            0.5,
+        );
+        let at = |id: u64| s.id.iter().position(|&x| x == id).unwrap();
+        assert_eq!(s.information[at(0)], 0.5, "source clamped to the cap");
+        assert_eq!(s.information[at(1)], 0.5, "copy target clamped to the cap");
+    }
+
+    #[test]
+    fn amplifying_copy_cannot_exceed_max_over_many_ticks() {
+        // An amplifying copy (positive noise) run repeatedly would blow up
+        // toward f32 overflow uncapped; the cap holds every particle at or
+        // below information_max forever, and the result stays finite.
+        let (mut s, geom) = copy_setup();
+        let rules = RuleSet {
+            rules: vec![copy_rule(0.0, 0.5)],
+        };
+        let cap = 2.0f32;
+        for tick in 0..200 {
+            apply(
+                &mut s,
+                &mut bonds_scratch(),
+                &geom,
+                &rules,
+                7,
+                tick,
+                &mut 1_000_000u64,
+                cap,
+            );
+        }
+        for &v in &s.information {
+            assert!(v.is_finite(), "information stayed finite under the cap");
+            assert!(v <= cap, "information {v} exceeded the cap {cap}");
+        }
     }
 
     fn base_rule() -> CompiledRule {
@@ -1051,6 +1150,7 @@ mod tests {
             7,
             0,
             &mut next_id,
+            f32::INFINITY,
         );
 
         assert_eq!(s.len(), 3);
@@ -1098,6 +1198,7 @@ mod tests {
             7,
             0,
             &mut next_id,
+            f32::INFINITY,
         );
         assert_eq!(s.len(), 2, "no child below the mass floor");
         assert_eq!(next_id, 100, "no id consumed by an aborted event");
@@ -1131,6 +1232,7 @@ mod tests {
             7,
             0,
             &mut 100u64,
+            f32::INFINITY,
         );
         assert_eq!(s.len(), 1);
         assert_eq!(s.id[0], 0);
@@ -1170,6 +1272,7 @@ mod tests {
             7,
             0,
             &mut 100u64,
+            f32::INFINITY,
         );
         assert_eq!(s.len(), 2, "victim absorbed exactly once");
         let mt: f32 = s.matter.iter().sum();
@@ -1198,6 +1301,7 @@ mod tests {
                 7,
                 0,
                 &mut 1_000_000u64,
+                f32::INFINITY,
             );
             let at = |id: u64| s.id.iter().position(|&x| x == id).unwrap();
             s.information[at(1)]

@@ -227,6 +227,7 @@ mod tests {
             attraction: 5.0,
             bond_rest_length: 3.0,
             information_decay: 0.0,
+            information_max: 1e30,
             rules: Vec::new(),
             particles: ids
                 .iter()
