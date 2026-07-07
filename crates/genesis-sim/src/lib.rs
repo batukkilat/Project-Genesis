@@ -906,6 +906,42 @@ mod tests {
     }
 
     #[test]
+    fn lod_conserves_matter_and_energy_across_rate_boundaries() {
+        // The hard LOD invariant (Q-2026-07-06-A, item 2): matter and energy
+        // *stocks* are conserved exactly at every rate, including across chunks
+        // straddling different rates. An interaction event fires only between
+        // two active particles and each event already conserves, so a frozen
+        // particle never half-participates — nothing to leak. Exercised with
+        // an emit/absorb pack (fission_rules) under a demoting ladder, so the
+        // world genuinely has hot and cold chunks trading particles.
+        let mut on = test_config();
+        on.lod = demoting_lod();
+        let mut sim = Simulation::with_rules(&on, fission_rules());
+        let totals = |s: &WorldSnapshot| {
+            let m: f64 = s.particles.iter().map(|p| p.matter as f64).sum();
+            let e: f64 = s.particles.iter().map(|p| p.energy as f64).sum();
+            (m, e)
+        };
+        let (m0, e0) = totals(&sim.snapshot());
+        for _ in 0..200 {
+            sim.tick();
+        }
+        let snap = sim.snapshot();
+        // The population must actually churn (emit/absorb fired), or the test
+        // is vacuous.
+        assert_ne!(snap.particles.len(), 500, "no create/destroy happened");
+        let (m1, e1) = totals(&snap);
+        assert!(
+            ((m1 - m0) / m0).abs() < 1e-4,
+            "matter leaked under cross-rate LOD: {m0} -> {m1}"
+        );
+        assert!(
+            ((e1 - e0) / e0.max(1.0)).abs() < 1e-4,
+            "energy leaked under cross-rate LOD: {e0} -> {e1}"
+        );
+    }
+
+    #[test]
     fn lod_enabled_changes_the_future() {
         // A demoting ladder freezes quiet chunks, so trajectories differ from a
         // LOD-off run. (LOD-on and LOD-off are different universes by design.)

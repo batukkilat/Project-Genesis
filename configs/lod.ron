@@ -1,0 +1,29 @@
+// Example adaptive-detail (LOD) config — Phase 4 groundwork.
+//
+// Quiet chunks tick less often to save work; the policy is part of replay
+// identity when enabled (a different policy is a different universe). Run
+// `genesis verify --config configs/lod.ron --rules packs/actual.ron` to prove
+// this policy is self-identical across thread counts and save/resume.
+//
+// A chunk is a `chunk_cells × chunk_cells` block of grid cells. Each tick its
+// activity metric (max speed² over its particles) selects a tick stride from
+// the ladder: metric >= a rung's min_activity earns that rung's rate, and the
+// hottest qualifying rung wins. The hottest rung must be rate 1 so genuinely
+// active regions are always simulated exactly; the coldest rung caps how long
+// any chunk can stay frozen.
+(
+    seed: 0,
+    particle_count: 10000,
+    world_width: 4096.0,
+    world_height: 4096.0,
+    ticks_per_second: 60,
+    lod: (
+        enabled: true,
+        chunk_cells: 8,
+        ladder: [
+            (min_activity: 0.0, rate: 8),   // near-still chunks: every 8th tick
+            (min_activity: 0.25, rate: 4),  // drifting chunks: every 4th tick
+            (min_activity: 1.0, rate: 1),   // active chunks: every tick (exact)
+        ],
+    ),
+)

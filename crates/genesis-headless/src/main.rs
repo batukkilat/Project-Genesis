@@ -247,6 +247,20 @@ fn run(cli: Cli) -> Result<ExitCode, Box<dyn std::error::Error>> {
             }
             let hash_c = resumed.state_hash();
 
+            // LOD-on and LOD-off are different universes by design; the
+            // four-way check proves the *given* policy is self-identical across
+            // threads and save/resume, not that it matches a LOD-off run.
+            let lod_mode = if config.lod.enabled {
+                format!(
+                    "on (chunk_cells={}, {} rungs, max_rate={})",
+                    config.lod.chunk_cells,
+                    config.lod.ladder.len(),
+                    config.lod.max_rate()
+                )
+            } else {
+                "off".to_string()
+            };
+            println!("lod          {lod_mode}");
             println!("run A        {hash_a:#018x}");
             println!("run B        {hash_b:#018x}");
             println!("save/resume  {hash_c:#018x}");
