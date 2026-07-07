@@ -11,12 +11,13 @@
 pub mod bonds;
 pub mod grid;
 pub mod interact;
+pub mod lod;
 pub mod physics;
 pub mod snapshot;
 pub mod store;
 
 use bevy_ecs::prelude::*;
-use genesis_config::{PhysicsParams, SimConfig};
+use genesis_config::{LodPolicy, PhysicsParams, SimConfig};
 use genesis_core::DetRng;
 
 use bonds::BondStore;
@@ -49,6 +50,12 @@ pub struct Params {
 #[derive(Resource, Debug, Clone, Copy)]
 pub struct NextId(pub u64);
 
+/// Adaptive-detail policy resource. Held separately from `Params` (which is
+/// `Copy`) because the ladder is a `Vec`. Disabled by default; it becomes part
+/// of replay identity when LOD is wired into the snapshot (landing step 5).
+#[derive(Resource, Debug, Clone)]
+pub struct Lod(pub LodPolicy);
+
 /// Base seed for order-free derived RNG streams (`DetRng::derive`). Drawn
 /// once from the master stream at creation; part of replay identity.
 #[derive(Resource, Debug, Clone, Copy)]
@@ -71,11 +78,16 @@ fn sim_step(
     geom: Res<GridGeom>,
     params: Res<Params>,
     rules: Res<RuleSet>,
+    lod: Res<Lod>,
     stream_seed: Res<StreamSeed>,
     tick: Res<Tick>,
     mut next_id: ResMut<NextId>,
 ) {
     store.canonicalize(&geom);
+    // Classify right after canonicalize so the mask sees the tick's canonical
+    // layout and current velocities; the force/interaction/integrate passes
+    // then read it. Disabled policy leaves the mask empty (all active).
+    lod::classify(&mut store, &geom, &lod.0, tick.0);
     bonds.rebuild(&store);
     physics::forces(&mut store, &geom, &params.physics, &bonds);
     interact::apply(
@@ -148,6 +160,7 @@ impl Simulation {
             rules,
             store,
             BondStore::default(),
+            config.lod.clone(),
         );
         tracing::info!(
             particles = config.particle_count,
@@ -204,6 +217,10 @@ impl Simulation {
             },
             store,
             bonds,
+            // Pre-v8 snapshots carry no LOD policy: resume with LOD disabled,
+            // which reproduces the (necessarily LOD-off) run that was saved.
+            // Landing step 5 puts the policy in the snapshot.
+            LodPolicy::default(),
         )
     }
 
@@ -217,6 +234,7 @@ impl Simulation {
         rules: RuleSet,
         store: ParticleStore,
         bonds: BondStore,
+        lod: LodPolicy,
     ) -> Self {
         rules.assert_valid(params.physics.interaction_radius);
         let mut world = World::new();
@@ -233,6 +251,7 @@ impl Simulation {
         world.insert_resource(rules);
         world.insert_resource(store);
         world.insert_resource(bonds);
+        world.insert_resource(Lod(lod));
 
         let mut schedule = Schedule::default();
         schedule.add_systems((sim_step, advance_tick).chain());

@@ -33,6 +33,12 @@ pub struct ParticleStore {
     /// Force accumulators; valid after the force pass.
     pub fx: Vec<f32>,
     pub fy: Vec<f32>,
+    /// Adaptive-detail activity mask; valid after the classify pass. An empty
+    /// vector means "not tracked" — every particle is treated as active, which
+    /// is how the physics/interaction unit tests (which never classify) and a
+    /// disabled LOD policy both behave. Kept index-aligned with the particle
+    /// arrays through `remove_dead` and same-tick emissions.
+    pub active: Vec<bool>,
     /// Offsets into the particle arrays per cell (len = cell_count + 1);
     /// valid after `canonicalize`.
     pub cell_start: Vec<u32>,
@@ -70,6 +76,10 @@ impl ParticleStore {
     /// `cell`/`cell_start` go stale and are rebuilt by the next
     /// `canonicalize`.
     pub fn remove_dead(&mut self, alive: &[bool]) {
+        // The activity mask is compacted alongside only when it is tracked and
+        // index-aligned (populated by the classify pass); an empty/short mask
+        // means LOD is off, so leave it empty.
+        let track_active = self.active.len() == self.len();
         let keep = |i: usize| alive.get(i).copied().unwrap_or(true);
         let mut w = 0;
         for r in 0..self.len() {
@@ -84,6 +94,9 @@ impl ParticleStore {
                 self.information[w] = self.information[r];
                 self.fx[w] = self.fx[r];
                 self.fy[w] = self.fy[r];
+                if track_active {
+                    self.active[w] = self.active[r];
+                }
                 w += 1;
             }
         }
@@ -97,6 +110,9 @@ impl ParticleStore {
         self.information.truncate(w);
         self.fx.truncate(w);
         self.fy.truncate(w);
+        if track_active {
+            self.active.truncate(w);
+        }
     }
 
     /// Re-sort all particle arrays into (cell, id) order and rebuild the
