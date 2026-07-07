@@ -10,7 +10,17 @@ bit-identical replay; a different policy is a different universe.
 This document turns that settled decision into a concrete, code-grounded
 implementation plan. It is a **proposal**: the implementer ratifies the forks
 marked *Decision* below into the ROADMAP decisions log (with Q ids) in the
-landing commit, per the standing owner guidance. Nothing here is settled yet.
+landing commit, per the standing owner guidance.
+
+> **Status: landed 2026-07-07** (all 7 steps of the landing order below).
+> Forks ratified in the ROADMAP decisions log as **Q-2026-07-07-A**. One
+> divergence from this draft: replay identity **hashes the policy only when
+> enabled** (not always), so every existing LOD-off run keeps its exact
+> identity — see the decisions-log entry for the reasoning. The `--lod`
+> subcommand flag became a `lod` field embedded in `--config` (the policy is
+> part of `SimConfig`), exercised by `configs/lod.ron`. The ~10M baseline is
+> in BASELINES.md, with the finding that the unskipped per-tick `canonicalize`
+> sort bounds the speedup — the next optimization to pursue.
 
 ## TL;DR — Recommendation
 

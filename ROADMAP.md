@@ -86,6 +86,18 @@ Non-goals: anything that names biology; environment simulation.
 
 Goal: the world the player actually manipulates.
 
+Progress: **adaptive-detail (LOD) groundwork shipped 2026-07-07** — the first
+Phase 4 work item (decisions log, 2026-07-06). Chunks (`chunk_cells × chunk_cells`
+blocks of grid cells) are classified each tick by a stateless activity metric;
+cold chunks run at a reduced rate via a config ladder (`LodPolicy`, disabled by
+default). The both-active gate keeps matter/energy conservation exact at every
+rate (proven by a cross-rate emit/absorb test); the policy is replay identity
+only when enabled (save format v8), so every existing LOD-off run keeps its
+identity. `genesis verify --config configs/lod.ron` proves LOD-on self-identical
+across thread counts and save/resume; the ~10M baseline is in BASELINES.md.
+Forks ratified in the decisions log (Q-2026-07-07-A). Known follow-up: the
+per-tick `canonicalize` sort is unskipped and bounds the speedup (BASELINES.md).
+
 Deliverables:
 
 - Planet-scale environment fields: temperature, pressure, gravity, radiation, atmosphere composition — sampled by chunks, influencing interaction conditions.
