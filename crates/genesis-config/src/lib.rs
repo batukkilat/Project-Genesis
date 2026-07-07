@@ -495,24 +495,26 @@ mod tests {
 
     #[test]
     fn lod_ron_roundtrip() {
-        let mut config = SimConfig::default();
-        config.lod = LodPolicy {
-            enabled: true,
-            chunk_cells: 4,
-            ladder: vec![
-                LodRung {
-                    min_activity: 0.0,
-                    rate: 8,
-                },
-                LodRung {
-                    min_activity: 0.5,
-                    rate: 4,
-                },
-                LodRung {
-                    min_activity: 4.0,
-                    rate: 1,
-                },
-            ],
+        let config = SimConfig {
+            lod: LodPolicy {
+                enabled: true,
+                chunk_cells: 4,
+                ladder: vec![
+                    LodRung {
+                        min_activity: 0.0,
+                        rate: 8,
+                    },
+                    LodRung {
+                        min_activity: 0.5,
+                        rate: 4,
+                    },
+                    LodRung {
+                        min_activity: 4.0,
+                        rate: 1,
+                    },
+                ],
+            },
+            ..Default::default()
         };
         config.validate().unwrap();
         let text = ron::ser::to_string(&config).unwrap();
