@@ -84,6 +84,139 @@ impl Default for PhysicsParams {
     }
 }
 
+/// One rung of the adaptive-detail activity→rate ladder.
+///
+/// A chunk runs at the `rate` of the hottest rung whose `min_activity` its
+/// activity metric reaches (see [`LodPolicy::rate_for`]). Rungs are ordered by
+/// `min_activity` ascending; because rates are strictly decreasing along that
+/// order, a hotter chunk always earns a smaller rate. `rate` is the tick
+/// stride: a particle in a rate-`k` chunk is active on ticks where
+/// `tick % k == 0`, and frozen bit-for-bit otherwise.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+pub struct LodRung {
+    /// Minimum activity metric (chunk max of a non-negative per-particle
+    /// scalar) to qualify for this rung.
+    pub min_activity: f32,
+    /// Tick stride for chunks on this rung. `1` = active every tick (hot).
+    pub rate: u32,
+}
+
+/// Adaptive simulation detail (LOD) policy — Phase 4 groundwork
+/// (docs/research/adaptive-detail.md). Quiet chunks tick at a reduced rate;
+/// the policy is pure configuration, so with a fixed policy the classification
+/// is a function of `(state, tick)` alone — deterministic, thread-count
+/// invariant, and bit-identical across save/resume.
+///
+/// The policy becomes part of replay identity when LOD is wired into the state
+/// hash (adaptive-detail landing step 5); until then it is inert config with a
+/// disabled default, changing nothing.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct LodPolicy {
+    /// Master switch. When false, every particle is active every tick (no LOD)
+    /// and the rest of the policy is unused.
+    pub enabled: bool,
+    /// Side length, in grid cells, of a square LOD chunk. Coarser chunks are
+    /// cheaper to classify but blunt the LOD boundary.
+    pub chunk_cells: u32,
+    /// Activity→rate ladder, ordered by `min_activity` ascending. Rung 0 must
+    /// cover activity 0 (`min_activity == 0`, the coldest, largest rate) and
+    /// the hottest rung must be rate 1, so active regions stay exact.
+    pub ladder: Vec<LodRung>,
+}
+
+impl Default for LodPolicy {
+    fn default() -> Self {
+        // Disabled, all-hot ladder: a no-op even if switched on. Existing
+        // configs that omit `lod` deserialize to exactly this.
+        LodPolicy {
+            enabled: false,
+            chunk_cells: 8,
+            ladder: vec![LodRung {
+                min_activity: 0.0,
+                rate: 1,
+            }],
+        }
+    }
+}
+
+impl LodPolicy {
+    /// The coldest (largest) rate any chunk can run at. Rung 0 is coldest by
+    /// construction, so no chunk is ever frozen longer than this many ticks.
+    pub fn max_rate(&self) -> u32 {
+        self.ladder.first().map(|r| r.rate).unwrap_or(1)
+    }
+
+    /// Tick stride for a chunk with the given activity metric: the `rate` of
+    /// the hottest rung the metric reaches. Callers must pass a non-negative,
+    /// finite metric (chunk max of speed², which the info clamp keeps NaN-free).
+    pub fn rate_for(&self, activity: f32) -> u32 {
+        let mut rate = self.max_rate();
+        for rung in &self.ladder {
+            if activity >= rung.min_activity {
+                rate = rung.rate;
+            } else {
+                break;
+            }
+        }
+        rate
+    }
+
+    fn validate(&self) -> Result<(), ConfigError> {
+        // A disabled policy is inert; its fields are never read, so don't
+        // constrain them (an off switch should never fail to load).
+        if !self.enabled {
+            return Ok(());
+        }
+        if self.chunk_cells == 0 {
+            return Err(ConfigError::Invalid("lod.chunk_cells must be >= 1".into()));
+        }
+        if self.ladder.is_empty() {
+            return Err(ConfigError::Invalid(
+                "lod.ladder must have at least one rung".into(),
+            ));
+        }
+        if self.ladder[0].min_activity != 0.0 {
+            return Err(ConfigError::Invalid(
+                "lod.ladder rung 0 must have min_activity 0 (covers quiet chunks)".into(),
+            ));
+        }
+        let mut prev_activity = f32::NEG_INFINITY;
+        let mut prev_rate = u32::MAX;
+        for rung in &self.ladder {
+            if !rung.min_activity.is_finite() || rung.min_activity < 0.0 {
+                return Err(ConfigError::Invalid(
+                    "lod rung min_activity must be finite and >= 0".into(),
+                ));
+            }
+            if rung.min_activity <= prev_activity {
+                return Err(ConfigError::Invalid(
+                    "lod ladder min_activity must be strictly ascending".into(),
+                ));
+            }
+            if rung.rate < 1 {
+                return Err(ConfigError::Invalid("lod rung rate must be >= 1".into()));
+            }
+            if rung.rate >= prev_rate {
+                return Err(ConfigError::Invalid(
+                    "lod ladder rate must be strictly decreasing as activity rises (hotter = faster)"
+                        .into(),
+                ));
+            }
+            prev_activity = rung.min_activity;
+            prev_rate = rung.rate;
+        }
+        // The hottest rung must run every tick, so genuinely active regions are
+        // simulated exactly — LOD only ever approximates the quiet.
+        if self.ladder.last().unwrap().rate != 1 {
+            return Err(ConfigError::Invalid(
+                "lod ladder's hottest rung must have rate 1".into(),
+            ));
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct SimConfig {
@@ -96,6 +229,9 @@ pub struct SimConfig {
     pub ticks_per_second: u32,
     pub initial: InitialRanges,
     pub physics: PhysicsParams,
+    /// Adaptive simulation detail. Disabled by default — omit it and the
+    /// simulation runs every particle every tick, exactly as before.
+    pub lod: LodPolicy,
 }
 
 impl Default for SimConfig {
@@ -113,6 +249,7 @@ impl Default for SimConfig {
                 speed: Range::new(0.0, 2.0),
             },
             physics: PhysicsParams::default(),
+            lod: LodPolicy::default(),
         }
     }
 }
@@ -243,6 +380,7 @@ impl SimConfig {
                 "world must be at least 3 interaction radii in each axis".into(),
             ));
         }
+        self.lod.validate()?;
         Ok(())
     }
 
@@ -337,6 +475,185 @@ mod tests {
             config.validate().is_err(),
             "grid narrower than 3 cells must be rejected"
         );
+    }
+
+    #[test]
+    fn lod_default_is_disabled_and_valid() {
+        let lod = LodPolicy::default();
+        assert!(!lod.enabled);
+        lod.validate().unwrap();
+        SimConfig::default().validate().unwrap();
+    }
+
+    #[test]
+    fn lod_omitted_from_ron_deserializes_to_disabled() {
+        // Existing configs predate the `lod` field; they must still load.
+        let config: SimConfig = ron::from_str("(seed: 7)").unwrap();
+        assert_eq!(config.lod, LodPolicy::default());
+        assert!(!config.lod.enabled);
+    }
+
+    #[test]
+    fn lod_ron_roundtrip() {
+        let mut config = SimConfig::default();
+        config.lod = LodPolicy {
+            enabled: true,
+            chunk_cells: 4,
+            ladder: vec![
+                LodRung {
+                    min_activity: 0.0,
+                    rate: 8,
+                },
+                LodRung {
+                    min_activity: 0.5,
+                    rate: 4,
+                },
+                LodRung {
+                    min_activity: 4.0,
+                    rate: 1,
+                },
+            ],
+        };
+        config.validate().unwrap();
+        let text = ron::ser::to_string(&config).unwrap();
+        let back: SimConfig = ron::from_str(&text).unwrap();
+        assert_eq!(config, back);
+    }
+
+    #[test]
+    fn lod_rate_for_picks_hottest_qualifying_rung() {
+        let lod = LodPolicy {
+            enabled: true,
+            chunk_cells: 4,
+            ladder: vec![
+                LodRung {
+                    min_activity: 0.0,
+                    rate: 8,
+                },
+                LodRung {
+                    min_activity: 0.5,
+                    rate: 4,
+                },
+                LodRung {
+                    min_activity: 4.0,
+                    rate: 1,
+                },
+            ],
+        };
+        assert_eq!(lod.max_rate(), 8);
+        assert_eq!(lod.rate_for(0.0), 8, "quiet chunk runs coldest");
+        assert_eq!(lod.rate_for(0.49), 8);
+        assert_eq!(lod.rate_for(0.5), 4, "boundary is inclusive");
+        assert_eq!(lod.rate_for(3.99), 4);
+        assert_eq!(lod.rate_for(4.0), 1, "hot chunk runs every tick");
+        assert_eq!(lod.rate_for(1e6), 1);
+    }
+
+    #[test]
+    fn lod_single_rung_all_hot_is_valid_noop() {
+        let lod = LodPolicy {
+            enabled: true,
+            chunk_cells: 8,
+            ladder: vec![LodRung {
+                min_activity: 0.0,
+                rate: 1,
+            }],
+        };
+        lod.validate().unwrap();
+        assert_eq!(lod.rate_for(0.0), 1);
+        assert_eq!(lod.rate_for(999.0), 1);
+    }
+
+    #[test]
+    fn lod_rejects_malformed_ladders() {
+        let base = LodPolicy {
+            enabled: true,
+            chunk_cells: 4,
+            ladder: vec![LodRung {
+                min_activity: 0.0,
+                rate: 1,
+            }],
+        };
+
+        // chunk_cells zero.
+        let mut p = base.clone();
+        p.chunk_cells = 0;
+        assert!(p.validate().is_err());
+
+        // empty ladder.
+        let mut p = base.clone();
+        p.ladder = vec![];
+        assert!(p.validate().is_err());
+
+        // rung 0 not at activity 0.
+        let mut p = base.clone();
+        p.ladder = vec![LodRung {
+            min_activity: 1.0,
+            rate: 1,
+        }];
+        assert!(p.validate().is_err(), "rung 0 must cover quiet chunks");
+
+        // non-ascending activity.
+        let mut p = base.clone();
+        p.ladder = vec![
+            LodRung {
+                min_activity: 0.0,
+                rate: 4,
+            },
+            LodRung {
+                min_activity: 0.0,
+                rate: 1,
+            },
+        ];
+        assert!(p.validate().is_err());
+
+        // non-decreasing rate (hotter rung not faster).
+        let mut p = base.clone();
+        p.ladder = vec![
+            LodRung {
+                min_activity: 0.0,
+                rate: 1,
+            },
+            LodRung {
+                min_activity: 1.0,
+                rate: 4,
+            },
+        ];
+        assert!(p.validate().is_err());
+
+        // hottest rung not rate 1.
+        let mut p = base.clone();
+        p.ladder = vec![
+            LodRung {
+                min_activity: 0.0,
+                rate: 8,
+            },
+            LodRung {
+                min_activity: 1.0,
+                rate: 2,
+            },
+        ];
+        assert!(p.validate().is_err(), "active regions must stay exact");
+
+        // NaN threshold.
+        let mut p = base.clone();
+        p.ladder = vec![LodRung {
+            min_activity: f32::NAN,
+            rate: 1,
+        }];
+        assert!(p.validate().is_err());
+    }
+
+    #[test]
+    fn lod_disabled_ignores_malformed_fields() {
+        // A disabled policy must load even with a nonsense ladder — the switch
+        // is off, the fields are unread.
+        let p = LodPolicy {
+            enabled: false,
+            chunk_cells: 0,
+            ladder: vec![],
+        };
+        p.validate().unwrap();
     }
 
     #[test]
