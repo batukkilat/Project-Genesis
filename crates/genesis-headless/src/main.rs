@@ -70,9 +70,17 @@ enum Command {
         particles: u64,
         #[arg(long, default_value_t = 120)]
         ticks: u64,
+        /// RON config (physics, LOD policy, initial ranges). `--particles`
+        /// always overrides the config's particle_count.
+        #[arg(long)]
+        config: Option<PathBuf>,
         /// RON rule pack to benchmark with (physics only when omitted).
         #[arg(long)]
         rules: Option<PathBuf>,
+        /// Force the LOD policy off, whatever the config says. Lets one config
+        /// bench LOD-on vs LOD-off on the identical world (apples-to-apples).
+        #[arg(long)]
+        no_lod: bool,
         /// Worker threads (0 = all cores). Never changes results.
         #[arg(long, default_value_t = 0)]
         threads: usize,
@@ -278,23 +286,40 @@ fn run(cli: Cli) -> Result<ExitCode, Box<dyn std::error::Error>> {
         Command::Bench {
             particles,
             ticks,
+            config,
             rules,
+            no_lod,
             threads,
         } => {
             init_thread_pool(threads)?;
-            let config = SimConfig {
-                particle_count: particles,
-                ..Default::default()
-            };
+            let mut config = load_config(&config)?;
+            // `--particles` is the authority for scale; the config supplies
+            // physics, initial ranges, and the LOD policy.
+            config.particle_count = particles;
+            if no_lod {
+                config.lod.enabled = false;
+            }
             println!("threads      {}", rayon::current_num_threads());
+            println!(
+                "lod          {}",
+                if config.lod.enabled { "on" } else { "off" }
+            );
 
             let start = Instant::now();
             let mut sim = Simulation::with_rules(&config, load_rules(&rules)?);
             let spawn_time = start.elapsed();
 
+            // Sample the active fraction over the run: LOD's whole point is
+            // skipping quiet particles, so report how many it actually skips.
+            let mut active_samples = 0u64;
+            let mut active_total = 0u128;
             let start = Instant::now();
             for _ in 0..ticks {
                 sim.tick();
+                if let Some(active) = sim.active_count() {
+                    active_total += active as u128;
+                    active_samples += 1;
+                }
             }
             let elapsed = start.elapsed();
             let tps = ticks as f64 / elapsed.as_secs_f64().max(f64::EPSILON);
@@ -306,6 +331,15 @@ fn run(cli: Cli) -> Result<ExitCode, Box<dyn std::error::Error>> {
                 "throughput   {tps:.1} ticks/s ({:.2e} particle-ticks/s)",
                 tps * particles as f64
             );
+            if active_samples > 0 {
+                let avg_active = active_total as f64 / active_samples as f64;
+                println!(
+                    "active frac  {:.3} ({:.0} of {} particles per tick, mean)",
+                    avg_active / particles as f64,
+                    avg_active,
+                    particles
+                );
+            }
             println!("state hash   {:#018x}", sim.state_hash());
             Ok(ExitCode::SUCCESS)
         }

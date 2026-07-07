@@ -1,0 +1,46 @@
+// Benchmark config: a mostly-quiet world for measuring adaptive-detail (LOD)
+// throughput (docs/research/adaptive-detail.md, landing step 7).
+//
+// Initial speeds are low, so chunk activity metrics fall on the cold rung and
+// most particles freeze on most ticks — the regime where LOD is meant to help.
+// Bench LOD-on vs LOD-off on the identical world:
+//   genesis bench --config configs/bench-quiet.ron --particles 10000000 --ticks 40
+//   genesis bench --config configs/bench-quiet.ron --particles 10000000 --ticks 40 --no-lod
+// `--particles` overrides particle_count; `--no-lod` forces the policy off.
+(
+    seed: 0,
+    // Overridden by --particles; a placeholder for standalone runs.
+    particle_count: 1000000,
+    // Dense but gentle: a small world packs many particles per cell (an
+    // expensive force pass), while very weak forces and low initial speeds keep
+    // most chunks below the cold-rung threshold — the settled-structure regime
+    // where LOD skips real work. At 10M particles this is ~38 particles/cell.
+    world_width: 4096.0,
+    world_height: 4096.0,
+    ticks_per_second: 60,
+    physics: (
+        interaction_radius: 8.0,
+        core_frac: 0.4,
+        repulsion: 0.5,
+        attraction: 0.1,
+        bond_rest_length: 3.0,
+        information_decay: 0.0,
+        information_max: 1e30,
+    ),
+    initial: (
+        matter: (lo: 0.1, hi: 1.0),
+        energy: (lo: 0.0, hi: 1.0),
+        information: (lo: 0.0, hi: 0.0),
+        // Quiet start: speed² stays below the cold-rung threshold.
+        speed: (lo: 0.0, hi: 0.1),
+    ),
+    lod: (
+        enabled: true,
+        chunk_cells: 8,
+        ladder: [
+            (min_activity: 0.0, rate: 8),
+            (min_activity: 0.25, rate: 4),
+            (min_activity: 1.0, rate: 1),
+        ],
+    ),
+)

@@ -271,6 +271,19 @@ impl Simulation {
         self.world.resource::<ParticleStore>().len()
     }
 
+    /// Number of particles active on the most recent tick's LOD mask, or `None`
+    /// when LOD is off (the mask is empty = everything active). Read-only
+    /// diagnostic — never affects state; used by the benchmark to report the
+    /// active fraction that LOD achieves.
+    pub fn active_count(&self) -> Option<usize> {
+        let store = self.world.resource::<ParticleStore>();
+        if !store.active.is_empty() && store.active.len() == store.len() {
+            Some(store.active.iter().filter(|&&a| a).count())
+        } else {
+            None
+        }
+    }
+
     /// Canonical snapshot of the full simulation state, particles sorted by id.
     pub fn snapshot(&self) -> WorldSnapshot {
         let params = *self.world.resource::<Params>();

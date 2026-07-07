@@ -5,6 +5,51 @@ reference machine changes; regressions against the last entry need a reason.
 
 Reference machine: WSL2, 12 threads (`rtk`/dev box), release build, engine v0.2.0.
 
+## Phase 4 (2026-07-07) — adaptive detail (LOD), ~10M baseline
+
+Machine: cloud container, 4 threads, release, engine v0.3.0. The gate before
+any environment feature (Q-2026-07-06-A, item 3): LOD-on vs LOD-off throughput
+at scale on a representative mostly-quiet world.
+
+Config: `configs/bench-quiet.ron` — dense (4096², r=8 → ~38 particles/cell at
+10M, an expensive force pass) but gentle (repulsion 0.5, attraction 0.1, speed
+≤ 0.1), so most chunks start below the cold-rung threshold. Ladder
+`[(0,8),(0.25,4),(1,1)]`, `chunk_cells=8`. Physics only (no rule pack).
+
+Command: `genesis bench --config configs/bench-quiet.ron --particles N --ticks T [--no-lod]`
+
+| N | LOD | Particle-ticks/s | Active frac | Speedup | State hash |
+|---|---|---|---|---|---|
+| 10M | off | 1.42e6 | — | 1x | `0x4fdf0260daa242ea` |
+| 10M | on | 1.82e6 | 0.730 | 1.28x | `0xaf325a58a255ffd4` |
+| 3M | off | 3.49e6 | — | 1x | `0x9a492d417111f795` |
+| 3M | on | 6.16e6 | 0.365 | 1.77x | `0x8555f741a4f22623` |
+
+Notes:
+
+- **LOD works and is exactly conservative.** Determinism (LOD-on self-identical
+  across thread counts and save/resume) and matter/energy conservation are
+  proven by tests and `genesis verify --config configs/lod.ron` (not by these
+  throughput rows). LOD-on and LOD-off hash differently *by design* — a
+  different policy is a different universe; the speedup is the only thing these
+  rows measure.
+- **Speedup tracks the active fraction, which rises with density.** At 3M
+  (~11/cell) the world stays quieter (0.365 active → 1.77x); at 10M (~38/cell)
+  stronger cumulative forces heat more chunks over the run (0.730 active →
+  1.28x). LOD pays off most in the dense-*and*-quiet regime — settled emergent
+  structures — and least where the world is either dilute (force pass already
+  cheap; measured: no speedup at 1M in a sparse world) or hot (few cold chunks).
+- **`canonicalize` is an unskipped fixed cost that bounds the speedup.** The
+  per-tick (cell, id) sort runs over every particle regardless of LOD, so LOD
+  only ever removes the force/interaction/integrate work of frozen particles,
+  not the sort. Frozen particles do not move, so their cell is unchanged — an
+  incremental/bucketed re-sort that skips stable regions (already flagged in the
+  Phase 2 notes below) is the natural next optimization to unlock more of LOD's
+  potential. Recorded as a known limitation, not a regression.
+- Active fraction is the mean over sampled ticks; with an all-rate-8 cold set it
+  cycles (all-active every 8th tick, near-zero between), so the mean understates
+  the off-stride savings and overstates the on-stride cost.
+
 ## Phase 3 (2026-07-06) — interaction overhead, secondary machine
 
 Machine: cloud container, 4 threads, release, engine v0.3.0. **Not
