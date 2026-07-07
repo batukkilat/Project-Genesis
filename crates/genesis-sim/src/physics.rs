@@ -85,12 +85,20 @@ pub fn forces(
         cell_start,
         fx,
         fy,
+        active,
         ..
     } = store;
     let px: &[f32] = px;
     let py: &[f32] = py;
     let cell: &[u32] = cell;
     let cell_start: &[u32] = cell_start;
+    // Adaptive-detail gate: an empty mask means "not tracked" (LOD off), so
+    // every particle is active. When tracked, a pairwise force applies only
+    // between two active particles — Newton's third law then holds across
+    // every boundary (equal, opposite, momentum-exact), and a frozen particle
+    // exchanges nothing, which is what makes conservation fall out exactly.
+    let active: &[bool] = active;
+    let lod = !active.is_empty();
 
     let r_cut2 = params.interaction_radius * params.interaction_radius;
     let world = (geom.world_w, geom.world_h);
@@ -104,6 +112,13 @@ pub fn forces(
             let base = chunk_idx * par_chunk();
             for (k, (fx_i, fy_i)) in fx_chunk.iter_mut().zip(fy_chunk.iter_mut()).enumerate() {
                 let i = base + k;
+                // A frozen particle accrues no force this tick (integrate skips
+                // it anyway); leave its accumulator at the canonicalize zero.
+                if lod && !active[i] {
+                    *fx_i = 0.0;
+                    *fy_i = 0.0;
+                    continue;
+                }
                 let (xi, yi) = (px[i], py[i]);
                 let mut ax = 0.0f32;
                 let mut ay = 0.0f32;
@@ -112,6 +127,9 @@ pub fn forces(
                     let end = cell_start[nc as usize + 1] as usize;
                     for j in start..end {
                         if j == i {
+                            continue;
+                        }
+                        if lod && !active[j] {
                             continue;
                         }
                         let dx = torus::delta(xi, px[j], world.0);
@@ -129,6 +147,12 @@ pub fn forces(
                 if has_bonds {
                     for (partner, row) in bonds.partners_of(i) {
                         let j = partner as usize;
+                        // A bond straddling a rate boundary is paused while
+                        // either end is cold — conserves (usually bonded pairs
+                        // are co-located and share a chunk, so this is rare).
+                        if lod && !active[j] {
+                            continue;
+                        }
                         let dx = torus::delta(xi, px[j], world.0);
                         let dy = torus::delta(yi, py[j], world.1);
                         let r2 = dx * dx + dy * dy;
@@ -162,12 +186,18 @@ pub fn integrate(store: &mut ParticleStore, geom: &GridGeom, params: &PhysicsPar
         information,
         fx,
         fy,
+        active,
         ..
     } = store;
     let world_w = geom.world_w;
     let world_h = geom.world_h;
     // Config validation guarantees rate * dt <= 1, so the factor is in [0, 1].
     let decay_factor = 1.0 - params.information_decay * dt;
+    // Adaptive-detail gate: frozen particles keep their exact state — no
+    // integration, no info decay — so they are bit-for-bit unchanged this
+    // tick. Empty mask = LOD off = every particle integrates.
+    let active: &[bool] = active;
+    let lod = !active.is_empty();
 
     px.par_chunks_mut(par_chunk())
         .zip(py.par_chunks_mut(par_chunk()))
@@ -177,9 +207,14 @@ pub fn integrate(store: &mut ParticleStore, geom: &GridGeom, params: &PhysicsPar
         .zip(information.par_chunks_mut(par_chunk()))
         .zip(fx.par_chunks(par_chunk()))
         .zip(fy.par_chunks(par_chunk()))
+        .enumerate()
         .for_each(
-            |(((((((px_c, py_c), vx_c), vy_c), m_c), info_c), fx_c), fy_c)| {
+            |(chunk_idx, (((((((px_c, py_c), vx_c), vy_c), m_c), info_c), fx_c), fy_c))| {
+                let base = chunk_idx * par_chunk();
                 for k in 0..px_c.len() {
+                    if lod && !active[base + k] {
+                        continue;
+                    }
                     let inv_m = 1.0 / m_c[k];
                     vx_c[k] += fx_c[k] * inv_m * dt;
                     vy_c[k] += fy_c[k] * inv_m * dt;

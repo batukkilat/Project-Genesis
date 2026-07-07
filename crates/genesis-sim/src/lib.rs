@@ -752,6 +752,143 @@ mod tests {
         );
     }
 
+    /// A single-rung, rate-1 ladder: LOD is enabled but every chunk is hot, so
+    /// every particle is active every tick. This exercises the whole gated
+    /// pipeline (mask built, read by forces/interact/integrate, pushed on emit,
+    /// compacted on absorb) with the gate always open.
+    fn all_hot_lod() -> LodPolicy {
+        LodPolicy {
+            enabled: true,
+            chunk_cells: 4,
+            ladder: vec![genesis_config::LodRung {
+                min_activity: 0.0,
+                rate: 1,
+            }],
+        }
+    }
+
+    /// A demoting ladder: slow chunks (speed² < 1) run every 8th tick, faster
+    /// chunks run every tick. With the default speed range ([0, 2)) plenty of
+    /// chunks fall on the cold rung, so LOD actually skips work.
+    fn demoting_lod() -> LodPolicy {
+        LodPolicy {
+            enabled: true,
+            chunk_cells: 4,
+            ladder: vec![
+                genesis_config::LodRung {
+                    min_activity: 0.0,
+                    rate: 8,
+                },
+                genesis_config::LodRung {
+                    min_activity: 1.0,
+                    rate: 1,
+                },
+            ],
+        }
+    }
+
+    #[test]
+    fn lod_all_hot_is_bit_identical_to_lod_off() {
+        // The strongest correctness check on the gate: when the mask marks
+        // everything active, every gated pass must produce exactly the bytes
+        // it would with LOD off. Runs the full Phase 3 vocabulary (transfers,
+        // bonds, copy, emit/absorb) so all four gates are exercised.
+        let off = test_config();
+        let mut on = test_config();
+        on.lod = all_hot_lod();
+
+        for rules in [test_rules(), bonding_rules(), fission_rules()] {
+            let mut a = Simulation::with_rules(&off, rules.clone());
+            let mut b = Simulation::with_rules(&on, rules);
+            assert_eq!(a.state_hash(), b.state_hash(), "diverged at tick 0");
+            for _ in 0..150 {
+                a.tick();
+                b.tick();
+            }
+            assert_eq!(
+                a.state_hash(),
+                b.state_hash(),
+                "all-hot LOD diverged from LOD-off — the gate corrupts state"
+            );
+        }
+    }
+
+    #[test]
+    fn lod_enabled_changes_the_future() {
+        // A demoting ladder freezes quiet chunks, so trajectories differ from a
+        // LOD-off run. (LOD-on and LOD-off are different universes by design.)
+        let off = test_config();
+        let mut on = test_config();
+        on.lod = demoting_lod();
+        let mut a = Simulation::new(&off);
+        let mut b = Simulation::new(&on);
+        for _ in 0..80 {
+            a.tick();
+            b.tick();
+        }
+        assert_ne!(
+            a.state_hash(),
+            b.state_hash(),
+            "demoting LOD changed nothing — the cold rung never froze anyone"
+        );
+    }
+
+    #[test]
+    fn lod_enabled_is_deterministic_and_thread_invariant() {
+        // Same seed + config + policy = same simulation, and the mask is an
+        // order-independent reduction, so thread count cannot change a bit.
+        let run = |threads: usize| {
+            let pool = rayon::ThreadPoolBuilder::new()
+                .num_threads(threads)
+                .build()
+                .unwrap();
+            pool.install(|| {
+                let mut on = test_config();
+                on.lod = demoting_lod();
+                let mut sim = Simulation::with_rules(&on, bonding_rules());
+                for _ in 0..120 {
+                    sim.tick();
+                }
+                sim.state_hash()
+            })
+        };
+        assert_eq!(run(1), run(1), "LOD run not deterministic");
+        assert_eq!(run(1), run(4), "LOD broke thread-count invariance");
+    }
+
+    #[test]
+    fn lod_freezes_inactive_particles_bit_for_bit() {
+        // Directly observe the freeze: a chunk on the cold (rate-8) rung must
+        // leave its particles' state untouched on an off-stride tick.
+        let mut on = test_config();
+        on.lod = demoting_lod();
+        // Very slow start so most chunks land on the cold rung.
+        on.initial.speed = genesis_config::Range::new(0.0, 0.2);
+        let mut sim = Simulation::new(&on);
+        // Advance to a tick where the cold rung (rate 8) is off-stride.
+        sim.tick(); // now at tick 1
+        let before = sim.snapshot();
+        // Tick 2, 3 are also off-stride for rate 8 (and rate 1 chunks move).
+        sim.tick();
+        let after = sim.snapshot();
+        let frozen = before
+            .particles
+            .iter()
+            .zip(&after.particles)
+            .filter(|(a, b)| {
+                a.id == b.id
+                    && a.pos_x == b.pos_x
+                    && a.pos_y == b.pos_y
+                    && a.vel_x == b.vel_x
+                    && a.vel_y == b.vel_y
+            })
+            .count();
+        assert!(
+            frozen > 0,
+            "no particle was frozen — the cold rung never engaged"
+        );
+    }
+
     #[test]
     fn information_max_caps_the_full_sim_and_is_replay_identity() {
         // End-to-end (config -> params -> sim_step -> apply), not the direct

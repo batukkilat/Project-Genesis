@@ -412,6 +412,15 @@ pub fn apply(
     let cell: &[u32] = &store.cell;
     let cell_start: &[u32] = &store.cell_start;
     let world = (geom.world_w, geom.world_h);
+    // Adaptive-detail gate: an interaction event fires only between two active
+    // particles. Matter/energy conservation is untouched — each committed
+    // event still conserves per the constitution; a frozen particle simply
+    // never participates, so there is no partial or one-sided transfer to
+    // leak. An empty mask means "not tracked" (LOD off) → every particle
+    // active, so this is exactly the pre-LOD behavior. `lod` also drives the
+    // emit path below, keeping `store.active` aligned with the store.
+    let active: &[bool] = &store.active;
+    let lod = active.len() == n;
 
     let n_chunks = n.div_ceil(par_chunk());
     let intent_chunks: Vec<Vec<Intent>> = (0..n_chunks)
@@ -421,6 +430,9 @@ pub fn apply(
             let hi = (lo + par_chunk()).min(n);
             let mut out = Vec::new();
             for i in lo..hi {
+                if lod && !active[i] {
+                    continue;
+                }
                 for (ridx, rule) in rules.rules.iter().enumerate() {
                     if !rule.self_cond.matches(matter[i], energy[i], information[i]) {
                         continue;
@@ -431,6 +443,9 @@ pub fn apply(
                         let end = cell_start[nc as usize + 1] as usize;
                         for j in start..end {
                             if j == i {
+                                continue;
+                            }
+                            if lod && !active[j] {
                                 continue;
                             }
                             let dx = genesis_core::torus::delta(px[i], px[j], world.0);
@@ -535,6 +550,12 @@ pub fn apply(
             // the child feels no force on its birth tick.
             store.fx.push(0.0);
             store.fy.push(0.0);
+            // Keep the activity mask aligned too (when tracked): a child is
+            // active on its birth tick — its parent was active to emit it — so
+            // it integrates this tick like any active particle.
+            if lod {
+                store.active.push(true);
+            }
         }
 
         let m = rule
