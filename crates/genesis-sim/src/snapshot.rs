@@ -4,6 +4,7 @@
 //! (later) the Observer and renderer. Particles are always sorted by id, so
 //! the same state always produces the same bytes and the same hash.
 
+use genesis_config::LodPolicy;
 use genesis_core::StateHasher;
 
 use crate::interact::CompiledRule;
@@ -48,6 +49,10 @@ pub struct WorldSnapshot {
     pub bond_rest_length: f32,
     pub information_decay: f32,
     pub information_max: f32,
+    /// Adaptive-detail policy. Part of replay identity only when enabled (a
+    /// disabled policy has no effect, so it must not perturb the hash — see
+    /// `state_hash`).
+    pub lod: LodPolicy,
     /// Active interaction rules — content, and therefore replay identity.
     pub rules: Vec<CompiledRule>,
     /// Sorted by id ascending.
@@ -75,6 +80,21 @@ impl WorldSnapshot {
         h.write_f32(self.bond_rest_length);
         h.write_f32(self.information_decay);
         h.write_f32(self.information_max);
+        // The adaptive-detail policy enters replay identity only when it
+        // changes the universe. A disabled policy has no effect, so it
+        // contributes nothing: a LOD-off run keeps the exact hash it had
+        // before LOD existed, and two cosmetically-different disabled policies
+        // (which produce byte-identical simulations) hash alike. An enabled
+        // policy is a different universe and hashes distinctly.
+        if self.lod.enabled {
+            h.write_u64(1);
+            h.write_u64(self.lod.chunk_cells as u64);
+            h.write_u64(self.lod.ladder.len() as u64);
+            for rung in &self.lod.ladder {
+                h.write_f32(rung.min_activity);
+                h.write_u64(rung.rate as u64);
+            }
+        }
         h.write_u64(self.rules.len() as u64);
         for rule in &self.rules {
             for v in rule.fields() {

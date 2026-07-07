@@ -4,9 +4,7 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+genesis-config = { workspace = true }
 genesis-core = { workspace = true }
 genesis-sim = { workspace = true }
 tracing = { workspace = true }
-
-[dev-dependencies]
-genesis-config = { workspace = true }

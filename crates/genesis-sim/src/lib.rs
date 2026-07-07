@@ -217,10 +217,9 @@ impl Simulation {
             },
             store,
             bonds,
-            // Pre-v8 snapshots carry no LOD policy: resume with LOD disabled,
-            // which reproduces the (necessarily LOD-off) run that was saved.
-            // Landing step 5 puts the policy in the snapshot.
-            LodPolicy::default(),
+            // The policy is now part of the snapshot, so an enabled-LOD run
+            // resumes into the identical universe it was saved from.
+            snap.lod.clone(),
         )
     }
 
@@ -280,6 +279,7 @@ impl Simulation {
         let next_id = self.world.resource::<NextId>().0;
         let stream_seed = self.world.resource::<StreamSeed>().0;
         let rules = self.world.resource::<RuleSet>().rules.clone();
+        let lod = self.world.resource::<Lod>().0.clone();
         let store = self.world.resource::<ParticleStore>();
         let bond_store = self.world.resource::<BondStore>();
 
@@ -323,6 +323,7 @@ impl Simulation {
             bond_rest_length: params.physics.bond_rest_length,
             information_decay: params.physics.information_decay,
             information_max: params.physics.information_max,
+            lod,
             rules,
             particles,
             bonds,
@@ -788,11 +789,14 @@ mod tests {
     }
 
     #[test]
-    fn lod_all_hot_is_bit_identical_to_lod_off() {
+    fn lod_all_hot_produces_identical_state_to_lod_off() {
         // The strongest correctness check on the gate: when the mask marks
-        // everything active, every gated pass must produce exactly the bytes
-        // it would with LOD off. Runs the full Phase 3 vocabulary (transfers,
-        // bonds, copy, emit/absorb) so all four gates are exercised.
+        // everything active, every gated pass must produce exactly the particle
+        // and bond state it would with LOD off. (The *hash* differs — an
+        // enabled policy is a distinct universe by design, even all-hot — so we
+        // compare the simulation state directly, not the hash.) Runs the full
+        // Phase 3 vocabulary (transfers, bonds, copy, emit/absorb) so all four
+        // gates are exercised.
         let off = test_config();
         let mut on = test_config();
         on.lod = all_hot_lod();
@@ -800,17 +804,105 @@ mod tests {
         for rules in [test_rules(), bonding_rules(), fission_rules()] {
             let mut a = Simulation::with_rules(&off, rules.clone());
             let mut b = Simulation::with_rules(&on, rules);
-            assert_eq!(a.state_hash(), b.state_hash(), "diverged at tick 0");
             for _ in 0..150 {
                 a.tick();
                 b.tick();
             }
+            let (sa, sb) = (a.snapshot(), b.snapshot());
             assert_eq!(
-                a.state_hash(),
-                b.state_hash(),
-                "all-hot LOD diverged from LOD-off — the gate corrupts state"
+                sa.particles, sb.particles,
+                "all-hot LOD diverged from LOD-off — the gate corrupts particle state"
+            );
+            assert_eq!(
+                sa.bonds, sb.bonds,
+                "all-hot LOD diverged from LOD-off — the gate corrupts bonds"
             );
         }
+    }
+
+    #[test]
+    fn disabled_lod_is_not_replay_identity() {
+        // A disabled policy has no effect, so it must not perturb the hash:
+        // two disabled policies that differ only cosmetically (chunk_cells)
+        // produce byte-identical simulations AND identical hashes — a LOD-off
+        // run keeps the exact identity it had before LOD existed.
+        let mut a = test_config();
+        a.lod = LodPolicy {
+            enabled: false,
+            chunk_cells: 4,
+            ..LodPolicy::default()
+        };
+        let mut b = test_config();
+        b.lod = LodPolicy {
+            enabled: false,
+            chunk_cells: 9,
+            ladder: vec![
+                genesis_config::LodRung {
+                    min_activity: 0.0,
+                    rate: 16,
+                },
+                genesis_config::LodRung {
+                    min_activity: 2.0,
+                    rate: 1,
+                },
+            ],
+        };
+        let mut sa = Simulation::with_rules(&a, bonding_rules());
+        let mut sb = Simulation::with_rules(&b, bonding_rules());
+        assert_eq!(sa.state_hash(), sb.state_hash());
+        for _ in 0..80 {
+            sa.tick();
+            sb.tick();
+        }
+        assert_eq!(
+            sa.state_hash(),
+            sb.state_hash(),
+            "a disabled policy perturbed replay identity"
+        );
+    }
+
+    #[test]
+    fn enabled_lod_policy_is_replay_identity() {
+        // Two enabled policies that differ produce different universes: even
+        // all-hot (which yields identical particle state) hashes distinctly
+        // from a demoting ladder, and both differ from LOD-off.
+        let off = Simulation::with_rules(&test_config(), bonding_rules()).state_hash();
+
+        let mut hot = test_config();
+        hot.lod = all_hot_lod();
+        let hot_hash = Simulation::with_rules(&hot, bonding_rules()).state_hash();
+
+        let mut demote = test_config();
+        demote.lod = demoting_lod();
+        let demote_hash = Simulation::with_rules(&demote, bonding_rules()).state_hash();
+
+        assert_ne!(off, hot_hash, "enabled policy must change replay identity");
+        assert_ne!(off, demote_hash);
+        assert_ne!(
+            hot_hash, demote_hash,
+            "different policy = different universe"
+        );
+    }
+
+    #[test]
+    fn resume_with_enabled_lod_matches_uninterrupted() {
+        // The policy is in the snapshot (v8), so an enabled-LOD run resumes
+        // into the identical universe it was saved from.
+        let mut on = test_config();
+        on.lod = demoting_lod();
+        let mut a = Simulation::with_rules(&on, bonding_rules());
+        let mut b = Simulation::with_rules(&on, bonding_rules());
+        for _ in 0..60 {
+            a.tick();
+            b.tick();
+        }
+        let mut resumed = Simulation::from_snapshot(&b.snapshot());
+        drop(b);
+        for _ in 0..60 {
+            a.tick();
+            resumed.tick();
+        }
+        assert_eq!(a.state_hash(), resumed.state_hash());
     }
 
     #[test]

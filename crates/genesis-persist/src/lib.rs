@@ -6,7 +6,7 @@
 //!
 //! ```text
 //! magic            [u8; 4]  = b"GENS"
-//! format_version   u32      = 7
+//! format_version   u32      = 8
 //! engine_version   u16 len + utf-8 bytes (informational)
 //! tick             u64
 //! rng_state        u64
@@ -23,6 +23,11 @@
 //! bond_rest_length f32      (v4: bonds joined replay identity)
 //! information_decay f32     (v5: information semantics joined replay identity)
 //! information_max   f32      (v7: information overflow cap, Q-2026-07-06-B)
+//! lod_enabled      u8       (v8: adaptive-detail policy; replay identity
+//!                           only when enabled — see state_hash)
+//! lod_chunk_cells  u32      (v8)
+//! lod_ladder_len   u32      (v8)
+//! lod_ladder       len * (min_activity f32, rate u32)   (v8)
 //! rule_count       u32      (v3: interaction rules joined replay identity)
 //! rules            rule_count * 28 f32 (CompiledRule::fields order; v4
 //!                           appended bond action code + strength; v5
@@ -40,11 +45,12 @@ use std::fmt;
 use std::io::{Read, Write};
 use std::path::Path;
 
+use genesis_config::{LodPolicy, LodRung};
 use genesis_sim::interact::CompiledRule;
 use genesis_sim::snapshot::{BondSnap, ParticleSnap, WorldSnapshot};
 
 pub const MAGIC: [u8; 4] = *b"GENS";
-pub const FORMAT_VERSION: u32 = 7;
+pub const FORMAT_VERSION: u32 = 8;
 
 #[derive(Debug)]
 pub enum SaveError {
@@ -102,6 +108,16 @@ pub fn save_to_writer(snap: &WorldSnapshot, w: &mut impl Write) -> Result<(), Sa
     w.write_all(&snap.bond_rest_length.to_le_bytes())?;
     w.write_all(&snap.information_decay.to_le_bytes())?;
     w.write_all(&snap.information_max.to_le_bytes())?;
+
+    // LOD policy (v8). Written unconditionally so the container stays self-
+    // describing; it enters replay identity only when enabled.
+    w.write_all(&[u8::from(snap.lod.enabled)])?;
+    w.write_all(&snap.lod.chunk_cells.to_le_bytes())?;
+    w.write_all(&(snap.lod.ladder.len() as u32).to_le_bytes())?;
+    for rung in &snap.lod.ladder {
+        w.write_all(&rung.min_activity.to_le_bytes())?;
+        w.write_all(&rung.rate.to_le_bytes())?;
+    }
 
     w.write_all(&(snap.rules.len() as u32).to_le_bytes())?;
     for rule in &snap.rules {
@@ -165,6 +181,21 @@ pub fn load_from_reader(r: &mut impl Read) -> Result<WorldSnapshot, SaveError> {
     let information_decay = read_f32(r)?;
     let information_max = read_f32(r)?;
 
+    let lod_enabled = read_u8(r)? != 0;
+    let lod_chunk_cells = read_u32(r)?;
+    let lod_ladder_len = read_u32(r)?;
+    let mut ladder = Vec::with_capacity(lod_ladder_len.min(1 << 16) as usize);
+    for _ in 0..lod_ladder_len {
+        let min_activity = read_f32(r)?;
+        let rate = read_u32(r)?;
+        ladder.push(LodRung { min_activity, rate });
+    }
+    let lod = LodPolicy {
+        enabled: lod_enabled,
+        chunk_cells: lod_chunk_cells,
+        ladder,
+    };
+
     let rule_count = read_u32(r)?;
     let mut rules = Vec::with_capacity(rule_count.min(1 << 20) as usize);
     for _ in 0..rule_count {
@@ -216,6 +247,7 @@ pub fn load_from_reader(r: &mut impl Read) -> Result<WorldSnapshot, SaveError> {
         bond_rest_length,
         information_decay,
         information_max,
+        lod,
         rules,
         particles,
         bonds,
@@ -244,6 +276,12 @@ pub fn load_from_file(path: &Path) -> Result<WorldSnapshot, SaveError> {
     let snap = load_from_reader(&mut file)?;
     tracing::info!(path = %path.display(), tick = snap.tick, "loaded simulation");
     Ok(snap)
+}
+
+fn read_u8(r: &mut impl Read) -> Result<u8, SaveError> {
+    let mut buf = [0u8; 1];
+    r.read_exact(&mut buf)?;
+    Ok(buf[0])
 }
 
 fn read_u16(r: &mut impl Read) -> Result<u16, SaveError> {
@@ -318,6 +356,49 @@ mod tests {
         assert_eq!(back.information_max, 12.5);
         assert_eq!(snap, back);
         assert_eq!(snap.state_hash(), back.state_hash());
+    }
+
+    #[test]
+    fn enabled_lod_policy_survives_the_format() {
+        // Guards the v8 header fields: an enabled policy (in replay identity)
+        // must round-trip through the binary format bit-for-bit, and resuming
+        // from it must reproduce the identical universe. A dropped or reordered
+        // field would trip the stored state-hash check on load.
+        use genesis_config::{LodPolicy, LodRung};
+        let mut config = test_config();
+        config.lod = LodPolicy {
+            enabled: true,
+            chunk_cells: 4,
+            ladder: vec![
+                LodRung {
+                    min_activity: 0.0,
+                    rate: 8,
+                },
+                LodRung {
+                    min_activity: 1.5,
+                    rate: 1,
+                },
+            ],
+        };
+        let mut sim = Simulation::new(&config);
+        for _ in 0..20 {
+            sim.tick();
+        }
+        let snap = sim.snapshot();
+        assert!(snap.lod.enabled);
+
+        let mut bytes = Vec::new();
+        save_to_writer(&snap, &mut bytes).unwrap();
+        let back = load_from_reader(&mut bytes.as_slice()).unwrap();
+        assert_eq!(snap, back);
+        assert_eq!(snap.state_hash(), back.state_hash());
+
+        let mut resumed = Simulation::from_snapshot(&back);
+        for _ in 0..40 {
+            sim.tick();
+            resumed.tick();
+        }
+        assert_eq!(sim.state_hash(), resumed.state_hash());
     }
 
     #[test]
