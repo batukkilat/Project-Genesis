@@ -81,6 +81,7 @@ fn sim_step(
     params: Res<Params>,
     rules: Res<RuleSet>,
     lod: Res<Lod>,
+    env: Res<EnvFields>,
     stream_seed: Res<StreamSeed>,
     tick: Res<Tick>,
     mut next_id: ResMut<NextId>,
@@ -97,6 +98,7 @@ fn sim_step(
         &mut bonds,
         &geom,
         &rules,
+        &env,
         stream_seed.0,
         tick.0,
         &mut next_id.0,
@@ -246,7 +248,7 @@ impl Simulation {
         lod: LodPolicy,
         env: EnvFields,
     ) -> Self {
-        rules.assert_valid(params.physics.interaction_radius);
+        rules.assert_valid(params.physics.interaction_radius, env.field_count());
         let mut world = World::new();
         world.insert_resource(GridGeom::new(
             params.world_width,
@@ -473,6 +475,7 @@ mod tests {
         RuleSet {
             rules: vec![interact::CompiledRule {
                 radius: 8.0,
+                env_cond: Vec::new(),
                 self_cond: interact::QuantityCondition::ANY,
                 other_cond: interact::QuantityCondition::ANY,
                 probability: 0.05,
@@ -500,6 +503,7 @@ mod tests {
         let mut set = test_rules();
         set.rules.push(interact::CompiledRule {
             radius: 6.0,
+            env_cond: Vec::new(),
             self_cond: interact::QuantityCondition {
                 matter: interact::Bounds::ANY,
                 energy: interact::Bounds::ANY,
@@ -527,6 +531,7 @@ mod tests {
         });
         set.rules.push(interact::CompiledRule {
             radius: 4.0,
+            env_cond: Vec::new(),
             self_cond: interact::QuantityCondition::ANY,
             other_cond: interact::QuantityCondition::ANY,
             probability: 0.2,
@@ -547,6 +552,7 @@ mod tests {
         });
         set.rules.push(interact::CompiledRule {
             radius: 8.0,
+            env_cond: Vec::new(),
             self_cond: interact::QuantityCondition::ANY,
             other_cond: interact::QuantityCondition::ANY,
             probability: 0.01,
@@ -635,6 +641,7 @@ mod tests {
     fn fission_rules() -> RuleSet {
         let mut split = interact::CompiledRule {
             radius: 6.0,
+            env_cond: Vec::new(),
             self_cond: interact::QuantityCondition::ANY,
             other_cond: interact::QuantityCondition::ANY,
             probability: 0.05,
@@ -661,7 +668,7 @@ mod tests {
             min: 0.5,
             max: f32::INFINITY,
         };
-        let mut eat = split;
+        let mut eat = split.clone();
         eat.emit = false;
         eat.emit_matter_frac = 0.0;
         eat.emit_energy_frac = 0.0;
@@ -1227,6 +1234,140 @@ mod tests {
             resumed.tick();
         }
         assert_eq!(a.state_hash(), resumed.state_hash());
+    }
+
+    /// A bond-forming rule gated to the east half of a west→east gradient
+    /// (field 0 in [0.5, ∞) over a 0→1 ramp; with 8 env cols over a 256-wide
+    /// world, the gate opens at x = 128).
+    fn banded_bond_rules() -> RuleSet {
+        let mut rule = test_rules().rules[0].clone();
+        rule.radius = 4.0;
+        rule.probability = 0.2;
+        rule.transfer_matter = 0.0;
+        rule.transfer_energy = 0.0;
+        rule.transfer_information = 0.0;
+        rule.bond_action = interact::BondAction::Create;
+        rule.bond_strength = 3.0;
+        rule.env_cond = vec![interact::EnvBound {
+            field: 0,
+            bounds: interact::Bounds {
+                min: 0.5,
+                max: f32::INFINITY,
+            },
+        }];
+        RuleSet { rules: vec![rule] }
+    }
+
+    fn gradient_config() -> SimConfig {
+        let mut config = test_config();
+        // Slow start: bonds should stay near where the environment allowed
+        // them to form, so the shaping test below reads formation location,
+        // not later drift.
+        config.initial.speed = genesis_config::Range::new(0.0, 0.5);
+        config.env = env_with(vec![field(genesis_config::FieldInit::GradientX {
+            lo: 0.0,
+            hi: 1.0,
+        })]);
+        config
+    }
+
+    #[test]
+    fn env_gradient_shapes_where_structures_emerge() {
+        // The Phase 4 exit criterion in miniature: identical physics and
+        // rules everywhere, but bonding is env-gated to the east half. The
+        // *location* of emergent structure must follow the environment —
+        // nothing about position is authored in the rule itself.
+        let mut sim = Simulation::with_rules(&gradient_config(), banded_bond_rules());
+        for _ in 0..100 {
+            sim.tick();
+        }
+        let snap = sim.snapshot();
+        assert!(
+            !snap.bonds.is_empty(),
+            "the in-band bond rule never fired — test is vacuous"
+        );
+        let x_of: std::collections::BTreeMap<u64, f32> =
+            snap.particles.iter().map(|p| (p.id, p.pos_x)).collect();
+        let bonded_x: Vec<f32> = snap
+            .bonds
+            .iter()
+            .flat_map(|b| [x_of[&b.a], x_of[&b.b]])
+            .collect();
+        // The gate opens at x = 128; endpoints can sit one rule-radius west
+        // of an in-band initiator and drift somewhat after bonding, so allow
+        // a small straggler tail rather than a hard boundary.
+        let west = bonded_x.iter().filter(|&&x| x < 100.0).count();
+        assert!(
+            (west as f32) < 0.05 * bonded_x.len() as f32,
+            "{west} of {} bonded endpoints deep in the gated-off west half",
+            bonded_x.len()
+        );
+        let mean_x: f32 = bonded_x.iter().sum::<f32>() / bonded_x.len() as f32;
+        assert!(
+            mean_x > 140.0,
+            "bonded structure should concentrate in the east half, mean x = {mean_x}"
+        );
+    }
+
+    #[test]
+    fn env_gate_is_replay_identity() {
+        // Same config, same rules except one env gate: different universe.
+        let gated = Simulation::with_rules(&gradient_config(), banded_bond_rules());
+        let mut ungated_rules = banded_bond_rules();
+        ungated_rules.rules[0].env_cond.clear();
+        let ungated = Simulation::with_rules(&gradient_config(), ungated_rules);
+        assert_ne!(
+            gated.state_hash(),
+            ungated.state_hash(),
+            "an env gate must be part of replay identity from tick 0"
+        );
+    }
+
+    #[test]
+    fn env_gated_rules_are_deterministic_and_thread_invariant() {
+        let run = |threads: usize| {
+            let pool = rayon::ThreadPoolBuilder::new()
+                .num_threads(threads)
+                .build()
+                .unwrap();
+            pool.install(|| {
+                let mut sim = Simulation::with_rules(&gradient_config(), banded_bond_rules());
+                for _ in 0..80 {
+                    sim.tick();
+                }
+                sim.state_hash()
+            })
+        };
+        assert_eq!(run(1), run(1), "env-gated run not deterministic");
+        assert_eq!(run(1), run(4), "env gating broke thread-count invariance");
+    }
+
+    #[test]
+    fn resume_with_env_gated_rules_matches_uninterrupted() {
+        let mut a = Simulation::with_rules(&gradient_config(), banded_bond_rules());
+        let mut b = Simulation::with_rules(&gradient_config(), banded_bond_rules());
+        for _ in 0..60 {
+            a.tick();
+            b.tick();
+        }
+        let snap = b.snapshot();
+        assert!(!snap.bonds.is_empty(), "test needs live bonds at the save");
+        assert!(!snap.rules[0].env_cond.is_empty(), "gate lost by snapshot");
+        let mut resumed = Simulation::from_snapshot(&snap);
+        drop(b);
+        for _ in 0..60 {
+            a.tick();
+            resumed.tick();
+        }
+        assert_eq!(a.state_hash(), resumed.state_hash());
+    }
+
+    #[test]
+    #[should_panic(expected = "env_cond references field")]
+    fn rule_referencing_missing_env_field_is_rejected() {
+        // A gate on field 0 with no declared fields must fail at assembly,
+        // not panic mid-tick in the hot loop.
+        let _ = Simulation::with_rules(&test_config(), banded_bond_rules());
     }
 
     #[test]

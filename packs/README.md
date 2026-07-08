@@ -38,6 +38,7 @@ genesis init-rules my-pack.ron   # writes a starter pack to edit
 | `churn.ron` | dynamic population — energetic heavies split, heavies eat dust | particle count finds its own balance; matter/energy conserved through every split and merge |
 | `actual.ron` | conservation-respecting regime — flows equalize, structure costs, info is expensive | slow condensation: bonded clusters where energy concentrates, patterns fade unless re-paid |
 | `sandbox.ron` | anything-goes regime — flows amplify, bonds and copies are free | runaway concentration and info saturation; boiling population |
+| `bands.ron` | environment-gated — bonding only works where env field 0 is mid-range; breaks happen everywhere | structures accumulate only inside the band (pair with `configs/env-gradient.ron`); the environment shapes *where*, never *what* |
 
 Authoring notes:
 
@@ -63,5 +64,11 @@ Authoring notes:
   floor. `absorb: true` destroys the other particle, moving all its stocks
   to the initiator (mass-weighted velocity merge). Emit and absorb are
   mutually exclusive per rule; ids are never reused.
+- `env_cond: [ (field: k, min: a, max: b), ... ]` gates the rule on the
+  config's environment fields, sampled at the initiator's env cell — every
+  listed bound must hold or the rule never fires there. Omitted ends are
+  unbounded; omitted `env_cond` fires anywhere. Field indices refer to the
+  config's `env.fields` list and are validated at startup: a pack that
+  references field `k` needs a config declaring at least `k + 1` fields.
 - No biology, no win conditions. Packs describe how quantities move; whatever
   structure appears, emerges.

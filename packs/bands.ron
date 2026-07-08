@@ -1,0 +1,29 @@
+// Bands: environment-gated chemistry (Phase 4, Q-2026-07-08-A).
+//
+// Bonding only works where environment field 0 sits in a mid-range band;
+// a slow unconditional break rule dissolves structures everywhere. Run on a
+// config whose field 0 has a gradient (configs/env-gradient.ron) and
+// persistent structures can only accumulate inside the band — the
+// environment shapes *where* chemistry happens, never *what* it builds.
+//
+// Requires a config declaring at least one env field; the engine rejects the
+// pack at assembly otherwise (field indices are validated against config).
+(
+    rules: [
+        // Close energetic pairs latch together — but only inside the band.
+        (
+            radius: 3.0,
+            self_cond: ( energy: ( min: 0.3 ) ),
+            other_cond: ( energy: ( min: 0.3 ) ),
+            env_cond: [ (field: 0, min: 0.45, max: 0.75) ],
+            probability: 0.15,
+            bond_create: ( strength: 4.0 ),
+        ),
+        // Everywhere: bonds slowly break, so outside the band nothing lasts.
+        (
+            radius: 8.0,
+            probability: 0.01,
+            bond_break: true,
+        ),
+    ],
+)

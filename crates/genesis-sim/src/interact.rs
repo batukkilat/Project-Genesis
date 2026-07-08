@@ -81,14 +81,25 @@ pub enum BondAction {
     Break,
 }
 
+/// Compiled bounds on one environment field, sampled at the initiator's env
+/// cell (Q-2026-07-08-A).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct EnvBound {
+    pub field: u32,
+    pub bounds: Bounds,
+}
+
 /// One compiled interaction rule: an ordered pair event from an initiator to
 /// an other particle within `radius`, firing with `probability` per candidate
 /// pair per tick. Note both orderings of a pair are evaluated independently.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct CompiledRule {
     pub radius: f32,
     pub self_cond: QuantityCondition,
     pub other_cond: QuantityCondition,
+    /// Environment gate: every entry must contain the field's value at the
+    /// initiator's env cell. Empty = fires anywhere.
+    pub env_cond: Vec<EnvBound>,
     pub probability: f32,
     /// Amounts moved initiator → other, clamped to the donor's stock at
     /// commit time (matter additionally keeps `MIN_MATTER` on the donor).
@@ -153,6 +164,17 @@ impl RuleSet {
                     radius: r.radius,
                     self_cond: cond(r.self_cond),
                     other_cond: cond(r.other_cond),
+                    env_cond: r
+                        .env_cond
+                        .iter()
+                        .map(|e| EnvBound {
+                            field: e.field,
+                            bounds: Bounds {
+                                min: e.min,
+                                max: e.max,
+                            },
+                        })
+                        .collect(),
                     probability: r.probability,
                     transfer_matter: r.transfer.matter,
                     transfer_energy: r.transfer.energy,
@@ -183,15 +205,17 @@ impl RuleSet {
             for v in r.fields() {
                 h.write_f32(v);
             }
+            r.hash_env_into(h);
         }
     }
 
     /// Panics if any rule is malformed. Runs once at simulation assembly so a
     /// bad rule can never reach the hot loop, where a NaN transfer would
-    /// silently drain stocks (`NaN.min(x) == x`) and an oversized radius
+    /// silently drain stocks (`NaN.min(x) == x`), an oversized radius
     /// would silently under-fire (the pair scan only covers the 3x3 grid
-    /// block, whose cell size is the physics interaction radius).
-    pub fn assert_valid(&self, max_radius: f32) {
+    /// block, whose cell size is the physics interaction radius), and an
+    /// out-of-range env field index would panic mid-tick.
+    pub fn assert_valid(&self, max_radius: f32, env_field_count: usize) {
         for (i, r) in self.rules.iter().enumerate() {
             for v in r.fields() {
                 assert!(!v.is_nan(), "rule {i}: NaN field");
@@ -206,6 +230,24 @@ impl RuleSet {
                 "rule {i}: probability {} outside [0, 1]",
                 r.probability
             );
+            for e in &r.env_cond {
+                assert!(
+                    (e.field as usize) < env_field_count,
+                    "rule {i}: env_cond references field {} but the config declares \
+                     {env_field_count} environment field(s)",
+                    e.field
+                );
+                assert!(
+                    !e.bounds.min.is_nan() && !e.bounds.max.is_nan(),
+                    "rule {i}: env_cond bounds must not be NaN"
+                );
+                assert!(
+                    e.bounds.min <= e.bounds.max,
+                    "rule {i}: env_cond min {} > max {}",
+                    e.bounds.min,
+                    e.bounds.max
+                );
+            }
             assert!(
                 r.transfer_matter >= 0.0
                     && r.transfer_energy >= 0.0
@@ -258,10 +300,38 @@ impl RuleSet {
 }
 
 impl CompiledRule {
-    /// Canonical field order, used by hashing and serialization. Keep in
-    /// sync with `from_fields`. The bond action is encoded as a code float
-    /// (0 = none, 1 = create, 2 = break); `info_copy`, `emit`, and `absorb`
-    /// as 0/1.
+    /// True when the rule's environment gate passes at the given env cell.
+    /// An empty gate always passes; callers skip env sampling entirely when
+    /// no rule in the set has env conditions.
+    pub fn env_matches(&self, env: &crate::env::EnvFields, env_cell: u32) -> bool {
+        self.env_cond.iter().all(|e| {
+            e.bounds
+                .contains(env.values[e.field as usize][env_cell as usize])
+        })
+    }
+
+    /// Hash contribution of the env gate. Only a non-empty gate writes
+    /// anything: a rule without env conditions behaves identically to a
+    /// pre-env rule, so it must hash identically (Q-2026-07-08-A). The
+    /// leading tag keeps the conditional block unambiguous in the stream.
+    pub fn hash_env_into(&self, h: &mut StateHasher) {
+        if self.env_cond.is_empty() {
+            return;
+        }
+        h.write_u64(3);
+        h.write_u64(self.env_cond.len() as u64);
+        for e in &self.env_cond {
+            h.write_u64(e.field as u64);
+            h.write_f32(e.bounds.min);
+            h.write_f32(e.bounds.max);
+        }
+    }
+
+    /// Canonical field order for the *fixed-size core* of a rule, used by
+    /// hashing and serialization. Keep in sync with `from_fields`. The bond
+    /// action is encoded as a code float (0 = none, 1 = create, 2 = break);
+    /// `info_copy`, `emit`, and `absorb` as 0/1. The variable-length env gate
+    /// is carried separately (`hash_env_into`, and explicitly by persist).
     pub fn fields(&self) -> [f32; 28] {
         [
             self.radius,
@@ -299,12 +369,15 @@ impl CompiledRule {
         ]
     }
 
-    /// Inverse of `fields`. An unknown bond-action code decodes to `None`
-    /// rather than panicking — a corrupt save still fails cleanly at its
-    /// integrity-hash check instead of aborting mid-parse.
+    /// Inverse of `fields` for the fixed-size core; the env gate starts empty
+    /// and is filled in by the caller (persist reads it separately). An
+    /// unknown bond-action code decodes to `None` rather than panicking — a
+    /// corrupt save still fails cleanly at its integrity-hash check instead
+    /// of aborting mid-parse.
     pub fn from_fields(f: [f32; 28]) -> Self {
         CompiledRule {
             radius: f[0],
+            env_cond: Vec::new(),
             self_cond: QuantityCondition {
                 matter: Bounds {
                     min: f[1],
@@ -391,6 +464,7 @@ pub fn apply(
     bonds: &mut crate::bonds::BondStore,
     geom: &GridGeom,
     rules: &RuleSet,
+    env: &crate::env::EnvFields,
     stream_seed: u64,
     tick: u64,
     next_id: &mut u64,
@@ -399,6 +473,11 @@ pub fn apply(
     if rules.rules.is_empty() || store.is_empty() {
         return;
     }
+    // Environment gating (Q-2026-07-08-A): sampled once per initiator per
+    // tick, only when some rule actually has env conditions — env-free packs
+    // pay nothing. Assembly validation guarantees every referenced field
+    // index exists.
+    let any_env = rules.rules.iter().any(|r| !r.env_cond.is_empty());
 
     // Phase A: parallel collect. Chunk partition follows the canonical
     // layout, so the concatenation order below is state-pure.
@@ -433,8 +512,16 @@ pub fn apply(
                 if lod && !active[i] {
                     continue;
                 }
+                let env_cell = if any_env {
+                    env.cell_of(px[i], py[i])
+                } else {
+                    0
+                };
                 for (ridx, rule) in rules.rules.iter().enumerate() {
                     if !rule.self_cond.matches(matter[i], energy[i], information[i]) {
+                        continue;
+                    }
+                    if !rule.env_cond.is_empty() && !rule.env_matches(env, env_cell) {
                         continue;
                     }
                     let r2_cut = rule.radius * rule.radius;
@@ -635,6 +722,7 @@ mod tests {
     fn transfer_energy_rule(probability: f32) -> CompiledRule {
         CompiledRule {
             radius: 8.0,
+            env_cond: Vec::new(),
             self_cond: QuantityCondition::ANY,
             other_cond: QuantityCondition::ANY,
             probability,
@@ -680,6 +768,7 @@ mod tests {
             &mut bonds_scratch(),
             &geom,
             &rules,
+            &crate::env::EnvFields::default(),
             7,
             0,
             &mut 1_000_000u64,
@@ -698,6 +787,76 @@ mod tests {
     }
 
     #[test]
+    fn env_gate_blocks_out_of_band_initiators() {
+        use crate::env::EnvFields;
+        use genesis_config::{EnvFieldSpec, EnvSpec, FieldInit};
+        let uniform_env = |v: f32| {
+            EnvFields::from_spec(
+                &EnvSpec {
+                    cols: 4,
+                    rows: 4,
+                    fields: vec![EnvFieldSpec {
+                        name: String::new(),
+                        init: FieldInit::Uniform(v),
+                    }],
+                },
+                64.0,
+                64.0,
+            )
+        };
+        // Certain transfer, initiator-gated on energy so only one direction
+        // fires, and env-gated to field-0 >= 0.5.
+        let mut rule = transfer_energy_rule(1.0);
+        rule.self_cond.energy = Bounds {
+            min: 0.5,
+            max: f32::INFINITY,
+        };
+        rule.env_cond = vec![EnvBound {
+            field: 0,
+            bounds: Bounds {
+                min: 0.5,
+                max: f32::INFINITY,
+            },
+        }];
+        let rules = RuleSet { rules: vec![rule] };
+
+        // Below the band: the rule must not fire at all.
+        let (mut s, geom) = two_particle_setup();
+        let before = s.energy.clone();
+        apply(
+            &mut s,
+            &mut bonds_scratch(),
+            &geom,
+            &rules,
+            &uniform_env(0.1),
+            7,
+            0,
+            &mut 1_000_000u64,
+            f32::INFINITY,
+        );
+        assert_eq!(before, s.energy, "out-of-band env must block the rule");
+
+        // Inside the band: the same rule fires.
+        let (mut s, geom) = two_particle_setup();
+        apply(
+            &mut s,
+            &mut bonds_scratch(),
+            &geom,
+            &rules,
+            &uniform_env(0.9),
+            7,
+            0,
+            &mut 1_000_000u64,
+            f32::INFINITY,
+        );
+        let donor = s.energy[s.id.iter().position(|&x| x == 0).unwrap()];
+        assert!(
+            (donor - 0.9).abs() < 1e-5,
+            "in-band env must let the rule fire: donor energy {donor}"
+        );
+    }
+
+    #[test]
     fn zero_probability_never_fires() {
         let (mut s, geom) = two_particle_setup();
         let before = (s.energy.clone(), s.matter.clone());
@@ -710,6 +869,7 @@ mod tests {
                 &mut bonds_scratch(),
                 &geom,
                 &rules,
+                &crate::env::EnvFields::default(),
                 7,
                 tick,
                 &mut 1_000_000u64,
@@ -731,6 +891,7 @@ mod tests {
         let rules = RuleSet {
             rules: vec![CompiledRule {
                 radius: 8.0,
+                env_cond: Vec::new(),
                 self_cond: QuantityCondition::ANY,
                 other_cond: QuantityCondition::ANY,
                 probability: 1.0,
@@ -756,6 +917,7 @@ mod tests {
                 &mut bonds_scratch(),
                 &geom,
                 &rules,
+                &crate::env::EnvFields::default(),
                 7,
                 tick,
                 &mut 1_000_000u64,
@@ -789,6 +951,7 @@ mod tests {
             &mut bonds_scratch(),
             &geom,
             &rules,
+            &crate::env::EnvFields::default(),
             7,
             0,
             &mut 1_000_000u64,
@@ -817,6 +980,7 @@ mod tests {
     fn rule_fields_roundtrip() {
         let rule = CompiledRule {
             radius: 3.5,
+            env_cond: Vec::new(),
             self_cond: QuantityCondition {
                 matter: Bounds { min: 0.5, max: 2.0 },
                 energy: Bounds::ANY,
@@ -855,7 +1019,7 @@ mod tests {
             emit_info_frac: 0.0,
             emit_offset: 0.0,
             absorb: false,
-            ..rule
+            ..rule.clone()
         };
         assert_eq!(CompiledRule::from_fields(broken.fields()), broken);
         let copying = CompiledRule {
@@ -868,7 +1032,7 @@ mod tests {
             emit_info_frac: 0.0,
             emit_offset: 0.0,
             absorb: false,
-            ..rule
+            ..rule.clone()
         };
         assert_eq!(CompiledRule::from_fields(copying.fields()), copying);
     }
@@ -876,6 +1040,7 @@ mod tests {
     fn bond_rule(action: BondAction) -> CompiledRule {
         CompiledRule {
             radius: 8.0,
+            env_cond: Vec::new(),
             self_cond: QuantityCondition::ANY,
             other_cond: QuantityCondition::ANY,
             probability: 1.0,
@@ -914,6 +1079,7 @@ mod tests {
             &mut bonds,
             &geom,
             &rules,
+            &crate::env::EnvFields::default(),
             7,
             0,
             &mut 1_000_000u64,
@@ -927,6 +1093,7 @@ mod tests {
             &mut bonds,
             &geom,
             &rules,
+            &crate::env::EnvFields::default(),
             7,
             1,
             &mut 1_000_000u64,
@@ -948,6 +1115,7 @@ mod tests {
             &mut bonds,
             &geom,
             &rules,
+            &crate::env::EnvFields::default(),
             7,
             0,
             &mut 1_000_000u64,
@@ -960,6 +1128,7 @@ mod tests {
     fn copy_rule(cost: f32, noise: f32) -> CompiledRule {
         CompiledRule {
             radius: 8.0,
+            env_cond: Vec::new(),
             self_cond: QuantityCondition {
                 matter: Bounds::ANY,
                 energy: Bounds::ANY,
@@ -1008,6 +1177,7 @@ mod tests {
             &mut bonds_scratch(),
             &geom,
             &rules,
+            &crate::env::EnvFields::default(),
             7,
             0,
             &mut 1_000_000u64,
@@ -1035,6 +1205,7 @@ mod tests {
             &mut bonds_scratch(),
             &geom,
             &rules,
+            &crate::env::EnvFields::default(),
             7,
             0,
             &mut 1_000_000u64,
@@ -1055,6 +1226,7 @@ mod tests {
             &mut bonds_scratch(),
             &geom,
             &rules,
+            &crate::env::EnvFields::default(),
             7,
             0,
             &mut 1_000_000u64,
@@ -1082,6 +1254,7 @@ mod tests {
             &mut bonds_scratch(),
             &geom,
             &rules,
+            &crate::env::EnvFields::default(),
             7,
             0,
             &mut 1_000_000u64,
@@ -1108,6 +1281,7 @@ mod tests {
                 &mut bonds_scratch(),
                 &geom,
                 &rules,
+                &crate::env::EnvFields::default(),
                 7,
                 tick,
                 &mut 1_000_000u64,
@@ -1123,6 +1297,7 @@ mod tests {
     fn base_rule() -> CompiledRule {
         CompiledRule {
             radius: 8.0,
+            env_cond: Vec::new(),
             self_cond: QuantityCondition::ANY,
             other_cond: QuantityCondition::ANY,
             probability: 1.0,
@@ -1168,6 +1343,7 @@ mod tests {
             &mut bonds_scratch(),
             &geom,
             &rules,
+            &crate::env::EnvFields::default(),
             7,
             0,
             &mut next_id,
@@ -1216,6 +1392,7 @@ mod tests {
             &mut bonds_scratch(),
             &geom,
             &rules,
+            &crate::env::EnvFields::default(),
             7,
             0,
             &mut next_id,
@@ -1250,6 +1427,7 @@ mod tests {
             &mut bonds_scratch(),
             &geom,
             &rules,
+            &crate::env::EnvFields::default(),
             7,
             0,
             &mut 100u64,
@@ -1290,6 +1468,7 @@ mod tests {
             &mut bonds_scratch(),
             &geom,
             &rules,
+            &crate::env::EnvFields::default(),
             7,
             0,
             &mut 100u64,
@@ -1319,6 +1498,7 @@ mod tests {
                 &mut bonds_scratch(),
                 &geom,
                 &rules,
+                &crate::env::EnvFields::default(),
                 7,
                 0,
                 &mut 1_000_000u64,

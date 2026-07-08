@@ -125,15 +125,33 @@ impl Default for EmitSpec {
     }
 }
 
+/// Closed bounds on one environment field, sampled at the initiator's
+/// position (Q-2026-07-08-A). `field` indexes the config's `env.fields` list;
+/// omitted ends are unbounded.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+pub struct EnvBoundSpec {
+    pub field: u32,
+    #[serde(default = "neg_inf")]
+    pub min: f32,
+    #[serde(default = "inf")]
+    pub max: f32,
+}
+
 /// One authored rule. `radius` and `probability` are mandatory; everything
 /// else defaults to "match anything, move nothing".
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct RuleSpec {
     pub radius: f32,
     #[serde(default)]
     pub self_cond: ConditionSpec,
     #[serde(default)]
     pub other_cond: ConditionSpec,
+    /// Environment conditions: every listed field must be inside its bounds
+    /// at the initiator's env cell for the rule to fire. Empty = fires
+    /// anywhere. Field indices are checked against the config's declared
+    /// fields at simulation assembly.
+    #[serde(default)]
+    pub env_cond: Vec<EnvBoundSpec>,
     pub probability: f32,
     #[serde(default)]
     pub transfer: TransferSpec,
@@ -258,6 +276,14 @@ impl RulePack {
                     ));
                 }
             }
+            for (k, env) in rule.env_cond.iter().enumerate() {
+                if env.min.is_nan() || env.max.is_nan() {
+                    return err(format!("env_cond[{k}] bounds must not be NaN"));
+                }
+                if env.min > env.max {
+                    return err(format!("env_cond[{k}] min {} > max {}", env.min, env.max));
+                }
+            }
             for (name, b) in [
                 ("self_cond.matter", rule.self_cond.matter),
                 ("self_cond.energy", rule.self_cond.energy),
@@ -303,6 +329,7 @@ impl RulePack {
                         energy: 0.05,
                         ..Default::default()
                     },
+                    env_cond: Vec::new(),
                     bond_create: None,
                     bond_break: false,
                     info_copy: None,
@@ -330,6 +357,7 @@ impl RulePack {
                         matter: 0.01,
                         ..Default::default()
                     },
+                    env_cond: Vec::new(),
                     bond_create: None,
                     bond_break: false,
                     info_copy: None,
@@ -411,6 +439,37 @@ mod tests {
             cost: 0.0,
             noise: 1.5,
         });
+        assert!(bad.validate().is_err());
+    }
+
+    #[test]
+    fn env_cond_parses_and_validates() {
+        let pack: RulePack = ron::from_str(
+            "(rules: [
+                (radius: 5.0, probability: 0.5,
+                 env_cond: [(field: 0, min: 0.4, max: 0.7), (field: 2, min: 1.0)]),
+            ])",
+        )
+        .unwrap();
+        pack.validate().unwrap();
+        let env = &pack.rules[0].env_cond;
+        assert_eq!(env.len(), 2);
+        assert_eq!(env[0].field, 0);
+        assert_eq!(env[0].min, 0.4);
+        assert_eq!(env[0].max, 0.7);
+        assert_eq!(env[1].field, 2);
+        assert_eq!(env[1].max, f32::INFINITY, "omitted max is unbounded");
+
+        // Omitted env_cond is empty (fires anywhere).
+        let bare: RulePack = ron::from_str("(rules: [(radius: 5.0, probability: 0.5)])").unwrap();
+        assert!(bare.rules[0].env_cond.is_empty());
+
+        let mut bad = pack.clone();
+        bad.rules[0].env_cond[0].min = 2.0; // min > max
+        assert!(bad.validate().is_err());
+
+        let mut bad = pack.clone();
+        bad.rules[0].env_cond[0].max = f32::NAN;
         assert!(bad.validate().is_err());
     }
 

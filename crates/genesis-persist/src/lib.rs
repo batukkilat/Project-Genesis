@@ -6,7 +6,7 @@
 //!
 //! ```text
 //! magic            [u8; 4]  = b"GENS"
-//! format_version   u32      = 9
+//! format_version   u32      = 10
 //! engine_version   u16 len + utf-8 bytes (informational)
 //! tick             u64
 //! rng_state        u64
@@ -34,10 +34,12 @@
 //! env_field_count  u32      (v9)
 //! env_fields       count * (cols * rows f32 cell values, row-major)  (v9)
 //! rule_count       u32      (v3: interaction rules joined replay identity)
-//! rules            rule_count * 28 f32 (CompiledRule::fields order; v4
+//! rules            rule_count * (28 f32 core (CompiledRule::fields order; v4
 //!                           appended bond action code + strength; v5
 //!                           appended info-copy flag + cost + noise; v6
-//!                           appended emit flag + fracs + offset + absorb flag)
+//!                           appended emit flag + fracs + offset + absorb flag),
+//!                           then v10: env_cond_count u32 +
+//!                           count * (field u32, min f32, max f32))
 //! particle_count   u64
 //! particles        count * (id u64, pos f32*2, vel f32*2, matter f32,
 //!                           energy f32, information f32), sorted by id
@@ -51,11 +53,11 @@ use std::io::{Read, Write};
 use std::path::Path;
 
 use genesis_config::{LodPolicy, LodRung};
-use genesis_sim::interact::CompiledRule;
+use genesis_sim::interact::{Bounds, CompiledRule, EnvBound};
 use genesis_sim::snapshot::{BondSnap, ParticleSnap, WorldSnapshot};
 
 pub const MAGIC: [u8; 4] = *b"GENS";
-pub const FORMAT_VERSION: u32 = 9;
+pub const FORMAT_VERSION: u32 = 10;
 
 #[derive(Debug)]
 pub enum SaveError {
@@ -139,6 +141,14 @@ pub fn save_to_writer(snap: &WorldSnapshot, w: &mut impl Write) -> Result<(), Sa
     for rule in &snap.rules {
         for v in rule.fields() {
             w.write_all(&v.to_le_bytes())?;
+        }
+        // Env gate (v10): written unconditionally (possibly count 0) so the
+        // container stays self-describing.
+        w.write_all(&(rule.env_cond.len() as u32).to_le_bytes())?;
+        for e in &rule.env_cond {
+            w.write_all(&e.field.to_le_bytes())?;
+            w.write_all(&e.bounds.min.to_le_bytes())?;
+            w.write_all(&e.bounds.max.to_le_bytes())?;
         }
     }
 
@@ -232,7 +242,19 @@ pub fn load_from_reader(r: &mut impl Read) -> Result<WorldSnapshot, SaveError> {
         for f in &mut fields {
             *f = read_f32(r)?;
         }
-        rules.push(CompiledRule::from_fields(fields));
+        let mut rule = CompiledRule::from_fields(fields);
+        let env_cond_count = read_u32(r)?;
+        rule.env_cond.reserve(env_cond_count.min(1 << 16) as usize);
+        for _ in 0..env_cond_count {
+            let field = read_u32(r)?;
+            let min = read_f32(r)?;
+            let max = read_f32(r)?;
+            rule.env_cond.push(EnvBound {
+                field,
+                bounds: Bounds { min, max },
+            });
+        }
+        rules.push(rule);
     }
 
     let count = read_u64(r)?;
@@ -478,6 +500,72 @@ mod tests {
     }
 
     #[test]
+    fn env_gated_rules_survive_the_format() {
+        // Guards the v10 per-rule env block: a rule's env gate (in replay
+        // identity) must round-trip bit-for-bit and resume into the identical
+        // universe.
+        use genesis_config::{EnvFieldSpec, EnvSpec, FieldInit};
+        use genesis_sim::interact::{BondAction, EnvBound, QuantityCondition, RuleSet};
+        let mut config = test_config();
+        config.env = EnvSpec {
+            cols: 8,
+            rows: 8,
+            fields: vec![EnvFieldSpec {
+                name: String::new(),
+                init: FieldInit::GradientX { lo: 0.0, hi: 1.0 },
+            }],
+        };
+        let rules = RuleSet {
+            rules: vec![CompiledRule {
+                radius: 4.0,
+                env_cond: vec![EnvBound {
+                    field: 0,
+                    bounds: Bounds {
+                        min: 0.5,
+                        max: f32::INFINITY,
+                    },
+                }],
+                self_cond: QuantityCondition::ANY,
+                other_cond: QuantityCondition::ANY,
+                probability: 0.3,
+                transfer_matter: 0.0,
+                transfer_energy: 0.01,
+                transfer_information: 0.0,
+                bond_action: BondAction::Create,
+                bond_strength: 2.0,
+                info_copy: false,
+                info_cost: 0.0,
+                info_noise: 0.0,
+                emit: false,
+                emit_matter_frac: 0.0,
+                emit_energy_frac: 0.0,
+                emit_info_frac: 0.0,
+                emit_offset: 0.0,
+                absorb: false,
+            }],
+        };
+        let mut sim = Simulation::with_rules(&config, rules);
+        for _ in 0..30 {
+            sim.tick();
+        }
+        let snap = sim.snapshot();
+        assert!(!snap.rules[0].env_cond.is_empty());
+
+        let mut bytes = Vec::new();
+        save_to_writer(&snap, &mut bytes).unwrap();
+        let back = load_from_reader(&mut bytes.as_slice()).unwrap();
+        assert_eq!(snap, back);
+        assert_eq!(snap.state_hash(), back.state_hash());
+
+        let mut resumed = Simulation::from_snapshot(&back);
+        for _ in 0..40 {
+            sim.tick();
+            resumed.tick();
+        }
+        assert_eq!(sim.state_hash(), resumed.state_hash());
+    }
+
+    #[test]
     fn save_load_continue_matches_uninterrupted() {
         let config = test_config();
         let mut uninterrupted = Simulation::new(&config);
@@ -509,6 +597,7 @@ mod tests {
         let rules = RuleSet {
             rules: vec![CompiledRule {
                 radius: 4.0,
+                env_cond: Vec::new(),
                 self_cond: QuantityCondition::ANY,
                 other_cond: QuantityCondition::ANY,
                 probability: 0.5,

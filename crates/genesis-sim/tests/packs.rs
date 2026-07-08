@@ -3,7 +3,7 @@
 //! run deterministically. Without this test a pack typo only surfaces when
 //! someone runs that pack.
 
-use genesis_config::{Range, RulePack, SimConfig};
+use genesis_config::{EnvFieldSpec, EnvSpec, FieldInit, Range, RulePack, SimConfig};
 use genesis_sim::Simulation;
 use genesis_sim::interact::RuleSet;
 use std::path::PathBuf;
@@ -38,9 +38,30 @@ fn small_config() -> SimConfig {
     config
 }
 
+/// The environment a pack declares it needs: one gradient field per index it
+/// references. Env-free packs get an env-free config, exactly as before.
+fn env_for(pack: &RulePack) -> EnvSpec {
+    let needed = pack
+        .rules
+        .iter()
+        .flat_map(|r| r.env_cond.iter())
+        .map(|e| e.field + 1)
+        .max()
+        .unwrap_or(0);
+    EnvSpec {
+        cols: 8,
+        rows: 8,
+        fields: (0..needed)
+            .map(|_| EnvFieldSpec {
+                name: String::new(),
+                init: FieldInit::GradientX { lo: 0.0, hi: 1.0 },
+            })
+            .collect(),
+    }
+}
+
 #[test]
 fn every_committed_pack_loads_compiles_and_assembles() {
-    let config = small_config();
     for path in committed_packs() {
         let pack = RulePack::load(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
         assert!(
@@ -48,19 +69,24 @@ fn every_committed_pack_loads_compiles_and_assembles() {
             "{}: pack has no rules",
             path.display()
         );
+        let mut config = small_config();
+        config.env = env_for(&pack);
         let rules = RuleSet::compile(&pack);
-        // Assembly runs assert_valid (NaN and radius-vs-grid checks) —
-        // a panic here means the pack cannot run on default physics.
+        // Assembly runs assert_valid (NaN, radius-vs-grid, and env-field
+        // checks) — a panic here means the pack cannot run on default physics
+        // plus the environment it declares it needs.
         let _ = Simulation::with_rules(&config, rules);
     }
 }
 
 #[test]
 fn every_committed_pack_is_deterministic() {
-    let config = small_config();
     for path in committed_packs() {
+        let pack = RulePack::load(&path).unwrap();
+        let mut config = small_config();
+        config.env = env_for(&pack);
         let run = || {
-            let rules = RuleSet::compile(&RulePack::load(&path).unwrap());
+            let rules = RuleSet::compile(&pack);
             let mut sim = Simulation::with_rules(&config, rules);
             for _ in 0..30 {
                 sim.tick();

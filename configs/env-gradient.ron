@@ -1,0 +1,31 @@
+// Example environment-fields config — Phase 4 (Q-2026-07-08-A).
+//
+// Declares one scalar field ramping west→east across the world. Fields are
+// generic and indexed; the name is documentation only (the engine never
+// reads it — rules reference fields by index). Cell values are built once
+// from the init spec at world creation and are part of replay identity.
+//
+// Pair with a pack that gates on the field, e.g.
+// `genesis run --config configs/env-gradient.ron --rules packs/bands.ron`:
+// bonds then only form where the field allows, so structure emerges in a
+// band — the environment shaping chemistry without scripting outcomes.
+(
+    seed: 0,
+    particle_count: 10000,
+    world_width: 1024.0,
+    world_height: 1024.0,
+    ticks_per_second: 60,
+    initial: (
+        matter: (lo: 0.1, hi: 1.0),
+        energy: (lo: 0.0, hi: 1.0),
+        information: (lo: 0.0, hi: 1.0),
+        speed: (lo: 0.0, hi: 2.0),
+    ),
+    env: (
+        cols: 32,
+        rows: 32,
+        fields: [
+            (name: "flux", init: GradientX(lo: 0.0, hi: 1.0)),
+        ],
+    ),
+)

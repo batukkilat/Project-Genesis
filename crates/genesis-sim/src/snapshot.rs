@@ -122,6 +122,9 @@ impl WorldSnapshot {
             for v in rule.fields() {
                 h.write_f32(v);
             }
+            // Non-empty env gates only: an env-free rule behaves identically
+            // to a pre-env rule, so it must hash identically.
+            rule.hash_env_into(&mut h);
         }
         h.write_u64(self.particles.len() as u64);
         for p in &self.particles {
