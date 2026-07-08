@@ -118,10 +118,18 @@ runs scripted experiments headless; `scripts/terraform-west.ron` on the
 gradient world is the exit criterion executable — verified DETERMINISTIC over
 3000 ticks across fresh/resume/thread-count, with a test showing the scripted
 edit redirects where structures emerge. **Both exit criteria now pass.**
-Remaining Phase 4 work: field dynamics (diffusion/decay/sources — parked as a
-later item in the env design doc), the remaining player verbs as their systems
-land (rotation, magnetic field, tectonics, asteroids), and chunk streaming /
-persistence for planets exceeding memory.
+**Field dynamics shipped 2026-07-08** (Q-2026-07-08-C, save format v12):
+per-field diffusion (torus Laplacian, conserves the field total) and
+relaxation toward a rest value, both default-off; params in replay identity
+only when active. The full stack — dynamic field + env-gated rules + action
+script — verifies DETERMINISTIC over 3000 ticks.
+
+Remaining Phase 4 work: the remaining player verbs as their systems land
+(rotation, magnetic field, tectonics, asteroids), and chunk streaming —
+scoped and **deliberately deferred** until an out-of-memory scale target
+exists (docs/research/chunk-streaming.md; the recorded `canonicalize`
+incremental-sort follow-up comes first). Phase 5 may begin: this phase's
+exit criteria pass.
 
 Deliverables:
 
