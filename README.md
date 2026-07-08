@@ -25,6 +25,7 @@ An Artificial Life Research Sandbox: the emergence of complexity from first prin
 | `genesis-sim` | ECS world (Bevy ECS, headless): physics kernel, interaction engine, bond storage, snapshots. |
 | `genesis-config` | RON simulation config, rule-pack, and action-script authoring schemas, validated; part of replay identity. |
 | `genesis-persist` | Versioned binary save/load with integrity hash (format v11: physics params, LOD policy, env fields, pending actions, rules, bonds, dynamic population). |
+| `genesis-observer` | Layer 5 (read-only): bond-graph structure extraction, persistence tracking; hypotheses/metrics land next. Cannot mutate simulation state. |
 | `genesis-headless` | CLI: run (with `--report` structure diagnostics), verify determinism, bench, init-config, init-rules. |
 
 ## Quick start

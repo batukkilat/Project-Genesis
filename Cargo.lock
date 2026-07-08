@@ -571,11 +571,20 @@ dependencies = [
  "clap",
  "genesis-config",
  "genesis-core",
+ "genesis-observer",
  "genesis-persist",
  "genesis-sim",
  "rayon",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "genesis-observer"
+version = "0.3.0"
+dependencies = [
+ "genesis-config",
+ "genesis-sim",
 ]
 
 [[package]]

@@ -1,14 +1,20 @@
-//! Read-only structure diagnostics over canonical snapshots.
+//! Layer 5: the Observer — analyzes the simulation without affecting it.
 //!
-//! Dev telemetry for the Phase 3 exit-criteria review: measures whether
-//! multi-particle bonded components exist and persist across time. These are
-//! graph facts (component counts, sizes, ages) — hypotheses about what a
-//! structure might *be* belong to the Phase 5 Observer. Nothing here can
-//! mutate simulation state: the input is a by-value snapshot.
+//! Phase 5 starts here (docs/research/observer-design.md): this crate began
+//! as the headless CLI's structure diagnostics, promoted to the Observer
+//! layer. It consumes read-only [`WorldSnapshot`]s and extracts graph facts —
+//! bonded components, sample stats, and structure identity across time.
+//! Metrics and confidence-scored hypotheses build on these (landing steps
+//! 2-4 in the design doc).
+//!
+//! The constitution's read-only guarantee is a type-system fact: nothing in
+//! this crate receives a mutable reference to any simulation type, so
+//! running the Observer cannot change a single simulated bit (proven by the
+//! replay-compatibility test).
 //!
 //! Everything is deterministic: components are reported in canonical order
 //! (sorted by smallest member id) and matching across samples breaks ties by
-//! that same order, so the same run always prints the same report.
+//! that same order, so the same run always yields the same observations.
 
 use genesis_sim::snapshot::WorldSnapshot;
 use std::collections::HashMap;

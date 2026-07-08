@@ -14,9 +14,11 @@ exactly where such labels become permitted, always prefixed "possible".
 
 `genesis-headless/src/analysis.rs` is proto-Observer code living in the
 CLI: bond-graph connected components, per-sample stats, and a
-`StructureTracker` that ages components across samples (exact
-id-set match). `genesis run --report N` prints it. Phase 5 starts by
-promoting this into a real crate, then generalizing.
+`StructureTracker` that follows components across samples by member
+overlap (half-of-the-larger rule, deterministic tie-breaking).
+`genesis run --report N` prints it. Phase 5 starts by promoting this
+into a real crate. **Step 1 landed 2026-07-08**: the module is now the
+`genesis-observer` crate, with the on/off replay-compatibility test.
 
 ## F1 — Crate boundary and the read-only guarantee
 
@@ -37,16 +39,15 @@ At 10M particles a clone per sample is measurable but the cadence is
 coarse (hundreds/thousands of ticks); do not build zero-copy machinery
 for a consumer that samples this rarely.
 
-## F3 — Structure identity: overlap tracking, not exact match
+## F3 — Structure identity: configurable overlap, stable observer ids
 
-The current tracker loses a structure's identity the moment one particle
-joins or leaves. Generalize to id-set overlap: sample `t+1`'s component
-C' continues sample `t`'s component C when
-`|C ∩ C'| / max(|C|, |C'|)` ≥ a configurable threshold (default ~0.6),
-best match wins, ties broken by lowest particle id (deterministic).
-This yields per-structure lifetimes that survive churn — the raw
-material for every metric below. Structures keep stable observer-side
-ids (never particle ids; never reused).
+The tracker already matches by overlap (`shared ≥ half of the larger`,
+hardcoded). Generalize: the threshold becomes observer config, and each
+tracked structure gains a stable observer-side id (never particle ids;
+never reused) so metrics and the timeline can reference "structure 17"
+across its whole life. Matching stays deterministic exactly as today
+(most shared members, then canonical order, each predecessor claimed
+once).
 
 ## F4 — Metrics v1 (formal definitions for the spec's names)
 

@@ -1,0 +1,10 @@
+[package]
+name = "genesis-observer"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+genesis-sim = { workspace = true }
+
+[dev-dependencies]
+genesis-config = { workspace = true }

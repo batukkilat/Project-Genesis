@@ -146,6 +146,13 @@ Non-goals: rendering, UI.
 
 Goal: detect what emerged, without ever influencing it.
 
+Progress: design draft in docs/research/observer-design.md (2026-07-08).
+**Step 1 landed 2026-07-08**: `genesis-observer` crate (the CLI's analysis
+module, promoted) — read-only by construction, with the on/off
+replay-compatibility test proving observation changes no simulated bit.
+Next: overlap-threshold config + stable structure ids, metrics v1,
+hypotheses v1, timeline recording (landing order in the design doc).
+
 Deliverables:
 
 - Observer as a separate crate that consumes read-only snapshots; physically cannot mutate simulation state.
