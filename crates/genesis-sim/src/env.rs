@@ -14,7 +14,7 @@
 //! exact identity; declared fields hash grid dims + every cell value.
 
 use bevy_ecs::prelude::*;
-use genesis_config::EnvSpec;
+use genesis_config::{EnvSpec, FieldDynamics};
 
 /// All environment fields, SoA: `values[k]` is field `k`'s row-major cell
 /// grid. Empty `values` means no environment (nothing stored, hashed, or
@@ -27,6 +27,10 @@ pub struct EnvFields {
     cell_h: f32,
     /// One row-major `cols * rows` grid per field.
     pub values: Vec<Vec<f32>>,
+    /// Per-field dynamics, index-aligned with `values` (Q-2026-07-08-C).
+    /// All-static dynamics contribute nothing to the hash and skip the env
+    /// step entirely.
+    pub dynamics: Vec<FieldDynamics>,
 }
 
 impl EnvFields {
@@ -60,6 +64,7 @@ impl EnvFields {
             cell_w: world_w / cols as f32,
             cell_h: world_h / rows as f32,
             values,
+            dynamics: spec.fields.iter().map(|f| f.dynamics).collect(),
         }
     }
 
@@ -69,6 +74,7 @@ impl EnvFields {
         cols: u32,
         rows: u32,
         values: Vec<Vec<f32>>,
+        dynamics: Vec<FieldDynamics>,
         world_w: f32,
         world_h: f32,
     ) -> Self {
@@ -81,6 +87,52 @@ impl EnvFields {
             cell_w: world_w / cols as f32,
             cell_h: world_h / rows as f32,
             values,
+            dynamics,
+        }
+    }
+
+    /// True when any field evolves on its own — the env step is skipped (and
+    /// the dynamics params stay out of replay identity) otherwise.
+    pub fn any_dynamic(&self) -> bool {
+        self.dynamics.iter().any(|d| !d.is_static())
+    }
+
+    /// One tick of field dynamics (Q-2026-07-08-C): explicit 4-neighbor
+    /// torus-Laplacian diffusion, then relaxation toward the rest value.
+    /// Single-threaded — the env grid is tiny and a fixed evaluation order
+    /// makes determinism trivial. Static fields are skipped whole, leaving
+    /// their cells untouched bits.
+    pub fn step(&mut self, dt: f32) {
+        let (cols, rows) = (self.cols as usize, self.rows as usize);
+        for (k, d) in self.dynamics.iter().enumerate() {
+            if d.is_static() {
+                continue;
+            }
+            let grid = &mut self.values[k];
+            if d.diffusion > 0.0 {
+                let r = d.diffusion * dt;
+                let old = grid.clone();
+                for cy in 0..rows {
+                    let up = (cy + rows - 1) % rows;
+                    let down = (cy + 1) % rows;
+                    for cx in 0..cols {
+                        let left = (cx + cols - 1) % cols;
+                        let right = (cx + 1) % cols;
+                        let lap = old[cy * cols + left]
+                            + old[cy * cols + right]
+                            + old[up * cols + cx]
+                            + old[down * cols + cx]
+                            - 4.0 * old[cy * cols + cx];
+                        grid[cy * cols + cx] = old[cy * cols + cx] + r * lap;
+                    }
+                }
+            }
+            if d.relax_rate > 0.0 {
+                let r = d.relax_rate * dt;
+                for v in grid.iter_mut() {
+                    *v += r * (d.relax_to - *v);
+                }
+            }
         }
     }
 
@@ -144,6 +196,7 @@ impl EnvFields {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use genesis_config::FieldDynamics;
     use genesis_config::{EnvFieldSpec, FieldInit};
 
     fn spec(cols: u32, rows: u32, inits: Vec<FieldInit>) -> EnvSpec {
@@ -155,9 +208,126 @@ mod tests {
                 .map(|init| EnvFieldSpec {
                     name: String::new(),
                     init,
+                    dynamics: Default::default(),
                 })
                 .collect(),
         }
+    }
+
+    fn dyn_spec(cols: u32, rows: u32, init: FieldInit, dynamics: FieldDynamics) -> EnvSpec {
+        EnvSpec {
+            cols,
+            rows,
+            fields: vec![EnvFieldSpec {
+                name: String::new(),
+                init,
+                dynamics,
+            }],
+        }
+    }
+
+    #[test]
+    fn diffusion_spreads_and_conserves_the_total() {
+        // A single hot cell on a uniform-zero field: diffusion must move
+        // value into the 4 neighbors and keep the field total constant
+        // (every Laplacian flow is antisymmetric on the torus).
+        let mut env = EnvFields::from_spec(
+            &dyn_spec(
+                8,
+                8,
+                FieldInit::Uniform(0.0),
+                FieldDynamics {
+                    diffusion: 1.0,
+                    relax_rate: 0.0,
+                    relax_to: 0.0,
+                },
+            ),
+            64.0,
+            64.0,
+        );
+        let center = 3 * 8 + 3;
+        env.values[0][center] = 16.0;
+        let total_before: f64 = env.values[0].iter().map(|&v| v as f64).sum();
+        for _ in 0..10 {
+            env.step(0.1); // rate * dt = 0.1, well inside stability
+        }
+        let grid = &env.values[0];
+        assert!(
+            grid[center] < 16.0,
+            "spike must flatten, still {}",
+            grid[center]
+        );
+        assert!(
+            grid[center - 1] > 0.0 && grid[center + 1] > 0.0,
+            "neighbors must have received value"
+        );
+        let total_after: f64 = grid.iter().map(|&v| v as f64).sum();
+        assert!(
+            (total_after - total_before).abs() < 1e-3,
+            "diffusion leaked: {total_before} -> {total_after}"
+        );
+    }
+
+    #[test]
+    fn relax_approaches_the_rest_value() {
+        let mut env = EnvFields::from_spec(
+            &dyn_spec(
+                4,
+                4,
+                FieldInit::Uniform(0.0),
+                FieldDynamics {
+                    diffusion: 0.0,
+                    relax_rate: 1.0,
+                    relax_to: 2.0,
+                },
+            ),
+            64.0,
+            64.0,
+        );
+        for _ in 0..100 {
+            env.step(0.1);
+        }
+        for &v in &env.values[0] {
+            assert!(
+                (v - 2.0).abs() < 0.01,
+                "field should have relaxed to 2.0, got {v}"
+            );
+        }
+    }
+
+    #[test]
+    fn static_fields_are_untouched_bits() {
+        // Mixed env: field 0 static, field 1 diffusing. The step must leave
+        // field 0's cells bit-identical while field 1 evolves.
+        let mixed = EnvSpec {
+            cols: 4,
+            rows: 4,
+            fields: vec![
+                EnvFieldSpec {
+                    name: String::new(),
+                    init: FieldInit::GradientX { lo: 0.0, hi: 1.0 },
+                    dynamics: FieldDynamics::default(),
+                },
+                EnvFieldSpec {
+                    name: String::new(),
+                    init: FieldInit::GradientY { lo: 0.0, hi: 1.0 },
+                    dynamics: FieldDynamics {
+                        diffusion: 1.0,
+                        relax_rate: 0.0,
+                        relax_to: 0.0,
+                    },
+                },
+            ],
+        };
+        let mut env = EnvFields::from_spec(&mixed, 64.0, 64.0);
+        assert!(env.any_dynamic());
+        let static_before = env.values[0].clone();
+        let dynamic_before = env.values[1].clone();
+        for _ in 0..5 {
+            env.step(0.1);
+        }
+        assert_eq!(env.values[0], static_before, "static field was touched");
+        assert_ne!(env.values[1], dynamic_before, "dynamic field never moved");
     }
 
     #[test]
@@ -273,7 +443,7 @@ mod tests {
             world.0,
             world.1,
         );
-        let b = EnvFields::from_parts(8, 4, a.values.clone(), world.0, world.1);
+        let b = EnvFields::from_parts(8, 4, a.values.clone(), a.dynamics.clone(), world.0, world.1);
         assert_eq!(a, b);
     }
 }

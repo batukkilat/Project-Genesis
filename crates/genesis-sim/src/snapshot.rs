@@ -4,7 +4,7 @@
 //! (later) the Observer and renderer. Particles are always sorted by id, so
 //! the same state always produces the same bytes and the same hash.
 
-use genesis_config::{ActionKind, LodPolicy, PlayerAction};
+use genesis_config::{ActionKind, FieldDynamics, LodPolicy, PlayerAction};
 use genesis_core::StateHasher;
 
 use crate::interact::CompiledRule;
@@ -60,6 +60,11 @@ pub struct WorldSnapshot {
     /// are state: part of replay identity when any are declared, contributing
     /// nothing when empty (Q-2026-07-08-A, the LOD precedent).
     pub env_fields: Vec<Vec<f32>>,
+    /// Per-field dynamics params, index-aligned with `env_fields`
+    /// (Q-2026-07-08-C). They shape every future tick, so they are replay
+    /// identity — but only when some field actually evolves; an all-static
+    /// env contributes nothing and keeps its pre-dynamics identity.
+    pub env_dynamics: Vec<FieldDynamics>,
     /// Player actions not yet applied, sorted by stamped tick
     /// (Q-2026-07-08-B). Part of replay identity when non-empty — two runs
     /// with identical current state but different pending edits have
@@ -121,6 +126,20 @@ impl WorldSnapshot {
                 for &v in field {
                     h.write_f32(v);
                 }
+            }
+        }
+        // Field dynamics params enter replay identity only when some field
+        // actually evolves (Q-2026-07-08-C): a static env is byte-identical
+        // to a pre-dynamics one, so it must hash identically. When any field
+        // is dynamic, every field's params are written so indices stay
+        // unambiguous.
+        if self.env_dynamics.iter().any(|d| !d.is_static()) {
+            h.write_u64(5);
+            h.write_u64(self.env_dynamics.len() as u64);
+            for d in &self.env_dynamics {
+                h.write_f32(d.diffusion);
+                h.write_f32(d.relax_rate);
+                h.write_f32(d.relax_to);
             }
         }
         // Pending player actions enter replay identity only while queued: an

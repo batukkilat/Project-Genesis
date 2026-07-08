@@ -262,6 +262,34 @@ impl FieldInit {
     }
 }
 
+/// Per-field dynamics (Q-2026-07-08-C): generic continuous operators run on
+/// the env grid each tick, after the player-action drain and before the
+/// particle step. Both default to 0 — a static field, bit-identical to a
+/// world without dynamics. Part of replay identity when any rate is non-zero.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Default)]
+#[serde(default)]
+pub struct FieldDynamics {
+    /// Diffusion rate per second, in env-cell units: explicit 4-neighbor
+    /// torus Laplacian, `v += diffusion * dt * (sum(neighbors) - 4v)`.
+    /// Conserves the field total. Stability: `diffusion * dt <= 0.25`.
+    pub diffusion: f32,
+    /// Relaxation rate per second toward `relax_to`:
+    /// `v += relax_rate * dt * (relax_to - v)`. The "climate" the field
+    /// returns to after edits and disturbances. `relax_rate * dt <= 1`.
+    pub relax_rate: f32,
+    /// Rest value the relax operator approaches. Unused when `relax_rate`
+    /// is 0.
+    pub relax_to: f32,
+}
+
+impl FieldDynamics {
+    /// A field with no dynamics is skipped entirely by the env step, so its
+    /// cells stay untouched bits.
+    pub fn is_static(&self) -> bool {
+        self.diffusion == 0.0 && self.relax_rate == 0.0
+    }
+}
+
 /// One declared environment field. The engine knows fields only by index;
 /// `name` is documentation for authors and (later) UI/Observer labeling —
 /// never read by the simulation, never hashed, never saved. Two configs
@@ -271,6 +299,9 @@ pub struct EnvFieldSpec {
     #[serde(default)]
     pub name: String,
     pub init: FieldInit,
+    /// Continuous per-tick evolution of the field; omitted = static.
+    #[serde(default)]
+    pub dynamics: FieldDynamics,
 }
 
 /// Planet-scale environment fields (Q-2026-07-08-A): generic indexed scalar
@@ -311,6 +342,22 @@ impl EnvSpec {
         }
         for (i, f) in self.fields.iter().enumerate() {
             f.init.validate(i)?;
+            let d = &f.dynamics;
+            if !(d.diffusion >= 0.0 && d.diffusion.is_finite()) {
+                return Err(ConfigError::Invalid(format!(
+                    "env.fields[{i}].dynamics.diffusion must be >= 0 and finite"
+                )));
+            }
+            if !(d.relax_rate >= 0.0 && d.relax_rate.is_finite()) {
+                return Err(ConfigError::Invalid(format!(
+                    "env.fields[{i}].dynamics.relax_rate must be >= 0 and finite"
+                )));
+            }
+            if !d.relax_to.is_finite() {
+                return Err(ConfigError::Invalid(format!(
+                    "env.fields[{i}].dynamics.relax_to must be finite"
+                )));
+            }
         }
         Ok(())
     }
@@ -485,6 +532,27 @@ impl SimConfig {
         }
         self.lod.validate()?;
         self.env.validate()?;
+        // Dynamics stability bounds depend on dt, so they live here rather
+        // than in EnvSpec::validate. Explicit-Euler diffusion on a 4-neighbor
+        // stencil is stable for rate * dt <= 1/4; relax must not overshoot.
+        for (i, f) in self.env.fields.iter().enumerate() {
+            if f.dynamics.diffusion * self.dt() > 0.25 {
+                return Err(ConfigError::Invalid(format!(
+                    "env.fields[{i}].dynamics.diffusion {} too fast for dt {} \
+                     (rate * dt must be <= 0.25 for stability)",
+                    f.dynamics.diffusion,
+                    self.dt()
+                )));
+            }
+            if f.dynamics.relax_rate * self.dt() > 1.0 {
+                return Err(ConfigError::Invalid(format!(
+                    "env.fields[{i}].dynamics.relax_rate {} too fast for dt {} \
+                     (rate * dt must be <= 1)",
+                    f.dynamics.relax_rate,
+                    self.dt()
+                )));
+            }
+        }
         Ok(())
     }
 
@@ -781,10 +849,12 @@ mod tests {
                     EnvFieldSpec {
                         name: "warmth".into(),
                         init: FieldInit::Uniform(1.5),
+                        dynamics: Default::default(),
                     },
                     EnvFieldSpec {
                         name: String::new(),
                         init: FieldInit::GradientX { lo: 0.0, hi: 4.0 },
+                        dynamics: Default::default(),
                     },
                 ],
             },
@@ -812,6 +882,7 @@ mod tests {
         let field = |init| EnvFieldSpec {
             name: String::new(),
             init,
+            dynamics: Default::default(),
         };
 
         // Zero grid with fields declared.
@@ -844,6 +915,73 @@ mod tests {
             fields: vec![],
         };
         config.validate().unwrap();
+    }
+
+    #[test]
+    #[allow(clippy::field_reassign_with_default)] // mutate-one-field-per-case reads best here
+    fn field_dynamics_parse_and_validate() {
+        // Omitted dynamics deserialize to static zeros.
+        let config: SimConfig =
+            ron::from_str("(env: (cols: 4, rows: 4, fields: [(init: Uniform(1.0))]))").unwrap();
+        assert_eq!(config.env.fields[0].dynamics, FieldDynamics::default());
+        assert!(config.env.fields[0].dynamics.is_static());
+        config.validate().unwrap();
+
+        // Authored dynamics parse and roundtrip.
+        let config: SimConfig = ron::from_str(
+            "(env: (cols: 4, rows: 4, fields: [
+                (init: Uniform(1.0), dynamics: (diffusion: 0.5, relax_rate: 0.1, relax_to: 1.0)),
+            ]))",
+        )
+        .unwrap();
+        config.validate().unwrap();
+        assert_eq!(config.env.fields[0].dynamics.diffusion, 0.5);
+        let text = ron::ser::to_string(&config).unwrap();
+        let back: SimConfig = ron::from_str(&text).unwrap();
+        assert_eq!(config, back);
+
+        let field = |dynamics| EnvFieldSpec {
+            name: String::new(),
+            init: FieldInit::Uniform(0.0),
+            dynamics,
+        };
+
+        // Negative rate.
+        let mut config = SimConfig::default();
+        config.env.fields = vec![field(FieldDynamics {
+            diffusion: -1.0,
+            ..Default::default()
+        })];
+        assert!(config.validate().is_err());
+
+        // Unstable diffusion: rate * dt > 0.25 at 60 tps.
+        let mut config = SimConfig::default();
+        config.env.fields = vec![field(FieldDynamics {
+            diffusion: 60.0,
+            ..Default::default()
+        })];
+        assert!(
+            config.validate().is_err(),
+            "diffusion faster than 0.25/dt must be rejected (explicit Euler blows up)"
+        );
+
+        // Overshooting relax: rate * dt > 1.
+        let mut config = SimConfig::default();
+        config.env.fields = vec![field(FieldDynamics {
+            relax_rate: 100.0,
+            relax_to: 1.0,
+            ..Default::default()
+        })];
+        assert!(config.validate().is_err());
+
+        // Non-finite rest value.
+        let mut config = SimConfig::default();
+        config.env.fields = vec![field(FieldDynamics {
+            relax_rate: 0.1,
+            relax_to: f32::NAN,
+            ..Default::default()
+        })];
+        assert!(config.validate().is_err());
     }
 
     #[test]

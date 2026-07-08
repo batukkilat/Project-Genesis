@@ -798,6 +798,7 @@ mod tests {
                     fields: vec![EnvFieldSpec {
                         name: String::new(),
                         init: FieldInit::Uniform(v),
+                        dynamics: Default::default(),
                     }],
                 },
                 64.0,

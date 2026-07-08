@@ -105,6 +105,30 @@ separate work items; their parameters will join replay identity when they
 land. Player field-editing tools are the roadmap's next deliverable and
 arrive with the replay-recorded action stream.
 
+### F5a — Field dynamics (settled 2026-07-08, Q-2026-07-08-C)
+
+Two generic per-field operators, both optional (default 0 = static field,
+bit-identical to before):
+
+- **Diffusion**: explicit-Euler 4-neighbor torus Laplacian in *cell*
+  units, `v += diffusion * dt * (Σ neighbors − 4v)`. Conserves the field
+  total exactly up to f32 rounding (every flow is antisymmetric).
+  Stability requires `diffusion * dt ≤ 0.25` — validated at config load.
+- **Relax**: `v += relax_rate * dt * (relax_to − v)` — exponential
+  approach to a rest value (a "climate" the field returns to after player
+  edits or diffusion disturbances). Requires `relax_rate * dt ≤ 1`.
+
+Scheduling: the env step runs after the player-action drain and before
+the particle step, single-threaded over the env grid (a 32×32 grid is
+~1k cells — parallelism would buy nothing and cost determinism review).
+A field with both rates zero is skipped entirely, so its cells are
+untouched bits. Replay identity follows the established rule: dynamics
+params hash only when some field has a non-zero rate (an all-static
+env keeps its v9 identity); save format v12 stores the three params per
+field unconditionally. Sources (constant per-cell injection) are cut
+from v1 — `FieldAdd` player actions and `relax_to` cover the authoring
+need until something demands them.
+
 ## Initial value specs (consumed at creation, never stored)
 
 Enough to author gradients without a noise stack:

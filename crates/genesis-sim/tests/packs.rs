@@ -55,6 +55,7 @@ fn env_for(pack: &RulePack) -> EnvSpec {
             .map(|_| EnvFieldSpec {
                 name: String::new(),
                 init: FieldInit::GradientX { lo: 0.0, hi: 1.0 },
+                dynamics: Default::default(),
             })
             .collect(),
     }

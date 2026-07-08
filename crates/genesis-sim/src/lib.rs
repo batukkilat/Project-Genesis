@@ -83,6 +83,15 @@ fn apply_player_actions(mut pending: ResMut<Pending>, mut env: ResMut<EnvFields>
     }
 }
 
+/// Field dynamics (Q-2026-07-08-C): runs after the action drain so a player
+/// edit is part of this tick's evolution, and before the particle step so
+/// particles see the evolved field. A fully static env skips the pass.
+fn step_env_dynamics(mut env: ResMut<EnvFields>, params: Res<Params>) {
+    if env.any_dynamic() {
+        env.step(params.dt);
+    }
+}
+
 /// One simulation step: canonicalize layout, compute kernel forces, run
 /// discrete interactions, integrate. Layout is re-derived from state at the
 /// start of every tick, so iteration order is a pure function of state
@@ -255,6 +264,7 @@ impl Simulation {
                 snap.env_cols,
                 snap.env_rows,
                 snap.env_fields.clone(),
+                snap.env_dynamics.clone(),
                 snap.world_width,
                 snap.world_height,
             ),
@@ -316,7 +326,15 @@ impl Simulation {
         world.insert_resource(Pending(actions));
 
         let mut schedule = Schedule::default();
-        schedule.add_systems((apply_player_actions, sim_step, advance_tick).chain());
+        schedule.add_systems(
+            (
+                apply_player_actions,
+                step_env_dynamics,
+                sim_step,
+                advance_tick,
+            )
+                .chain(),
+        );
 
         Simulation { world, schedule }
     }
@@ -405,6 +423,7 @@ impl Simulation {
             env_cols: env.cols,
             env_rows: env.rows,
             env_fields: env.values.clone(),
+            env_dynamics: env.dynamics.clone(),
             pending_actions,
             rules,
             particles,
@@ -1200,6 +1219,7 @@ mod tests {
         genesis_config::EnvFieldSpec {
             name: String::new(),
             init,
+            dynamics: Default::default(),
         }
     }
 
@@ -1495,6 +1515,74 @@ mod tests {
             &test_config(),
             RuleSet::default(),
             script(vec![set_action(10, 0.0, 128.0, 1.0)]),
+        );
+    }
+
+    #[test]
+    fn field_dynamics_are_replay_identity_only_when_active() {
+        use genesis_config::{FieldDynamics, FieldInit};
+        // Static dynamics contribute nothing: explicit zeros hash like an
+        // omitted dynamics block.
+        let mut static_cfg = test_config();
+        static_cfg.env = env_with(vec![field(FieldInit::Uniform(1.0))]);
+        let mut explicit_zero = static_cfg.clone();
+        explicit_zero.env.fields[0].dynamics = FieldDynamics::default();
+        assert_eq!(
+            Simulation::new(&static_cfg).state_hash(),
+            Simulation::new(&explicit_zero).state_hash()
+        );
+
+        // An active rate is a different universe from tick 0, before any cell
+        // value has changed.
+        let mut dynamic_cfg = static_cfg.clone();
+        dynamic_cfg.env.fields[0].dynamics = FieldDynamics {
+            diffusion: 1.0,
+            relax_rate: 0.0,
+            relax_to: 0.0,
+        };
+        assert_ne!(
+            Simulation::new(&static_cfg).state_hash(),
+            Simulation::new(&dynamic_cfg).state_hash(),
+            "active dynamics must enter replay identity before they act"
+        );
+    }
+
+    #[test]
+    fn field_dynamics_evolve_and_survive_save_resume() {
+        use genesis_config::{FieldDynamics, FieldInit};
+        // A gradient field relaxing toward 0.5 while diffusing: the field
+        // must actually change over ticks, and a mid-run save must resume
+        // into the identical future (the params live in the save).
+        let mut config = test_config();
+        config.env = env_with(vec![field(FieldInit::GradientX { lo: 0.0, hi: 1.0 })]);
+        config.env.fields[0].dynamics = FieldDynamics {
+            diffusion: 2.0,
+            relax_rate: 0.2,
+            relax_to: 0.5,
+        };
+        let mut a = Simulation::new(&config);
+        let mut b = Simulation::new(&config);
+        let start = a.snapshot().env_fields[0].clone();
+        for _ in 0..40 {
+            a.tick();
+            b.tick();
+        }
+        let snap = b.snapshot();
+        assert_ne!(
+            snap.env_fields[0], start,
+            "dynamic field never evolved over 40 ticks"
+        );
+        assert_eq!(snap.env_dynamics[0].diffusion, 2.0);
+        let mut resumed = Simulation::from_snapshot(&snap);
+        drop(b);
+        for _ in 0..40 {
+            a.tick();
+            resumed.tick();
+        }
+        assert_eq!(
+            a.state_hash(),
+            resumed.state_hash(),
+            "resume diverged — dynamics params lost across save/load"
         );
     }
 

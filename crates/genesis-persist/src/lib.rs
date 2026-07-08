@@ -6,7 +6,7 @@
 //!
 //! ```text
 //! magic            [u8; 4]  = b"GENS"
-//! format_version   u32      = 11
+//! format_version   u32      = 12
 //! engine_version   u16 len + utf-8 bytes (informational)
 //! tick             u64
 //! rng_state        u64
@@ -33,6 +33,9 @@
 //! env_rows         u32      (v9)
 //! env_field_count  u32      (v9)
 //! env_fields       count * (cols * rows f32 cell values, row-major)  (v9)
+//! env_dynamics     count * (diffusion f32, relax_rate f32, relax_to f32)
+//!                           (v12: field dynamics — replay identity only when
+//!                           some field evolves; see state_hash)
 //! pending_count    u32      (v11: pending player actions — replay identity
 //!                           only when non-empty; see state_hash)
 //! pending_actions  count * (tick u64, kind u8 (0 = set, 1 = add), field u32,
@@ -56,12 +59,12 @@ use std::fmt;
 use std::io::{Read, Write};
 use std::path::Path;
 
-use genesis_config::{ActionKind, LodPolicy, LodRung, PlayerAction, RegionSpec};
+use genesis_config::{ActionKind, FieldDynamics, LodPolicy, LodRung, PlayerAction, RegionSpec};
 use genesis_sim::interact::{Bounds, CompiledRule, EnvBound};
 use genesis_sim::snapshot::{BondSnap, ParticleSnap, WorldSnapshot};
 
 pub const MAGIC: [u8; 4] = *b"GENS";
-pub const FORMAT_VERSION: u32 = 11;
+pub const FORMAT_VERSION: u32 = 12;
 
 #[derive(Debug)]
 pub enum SaveError {
@@ -139,6 +142,14 @@ pub fn save_to_writer(snap: &WorldSnapshot, w: &mut impl Write) -> Result<(), Sa
         for v in field {
             w.write_all(&v.to_le_bytes())?;
         }
+    }
+
+    // Field dynamics (v12), one record per env field. Replay identity only
+    // when some field evolves.
+    for d in &snap.env_dynamics {
+        w.write_all(&d.diffusion.to_le_bytes())?;
+        w.write_all(&d.relax_rate.to_le_bytes())?;
+        w.write_all(&d.relax_to.to_le_bytes())?;
     }
 
     // Pending player actions (v11). Written unconditionally (possibly count
@@ -265,6 +276,15 @@ pub fn load_from_reader(r: &mut impl Read) -> Result<WorldSnapshot, SaveError> {
         env_fields.push(field);
     }
 
+    let mut env_dynamics = Vec::with_capacity(env_field_count.min(1 << 10) as usize);
+    for _ in 0..env_field_count {
+        env_dynamics.push(FieldDynamics {
+            diffusion: read_f32(r)?,
+            relax_rate: read_f32(r)?,
+            relax_to: read_f32(r)?,
+        });
+    }
+
     let pending_count = read_u32(r)?;
     let mut pending_actions = Vec::with_capacity(pending_count.min(1 << 16) as usize);
     for _ in 0..pending_count {
@@ -363,6 +383,7 @@ pub fn load_from_reader(r: &mut impl Read) -> Result<WorldSnapshot, SaveError> {
         env_cols,
         env_rows,
         env_fields,
+        env_dynamics,
         pending_actions,
         rules,
         particles,
@@ -519,11 +540,12 @@ mod tests {
 
     #[test]
     fn env_fields_survive_the_format() {
-        // Guards the v9 block: declared fields (in replay identity) must
-        // round-trip bit-for-bit, and resuming must reproduce the identical
-        // universe. A dropped or reordered value would trip the stored
-        // state-hash check on load.
-        use genesis_config::{EnvFieldSpec, EnvSpec, FieldInit};
+        // Guards the v9 and v12 blocks: declared fields and their dynamics
+        // (in replay identity) must round-trip bit-for-bit, and resuming must
+        // reproduce the identical universe — including future field evolution
+        // driven by the saved dynamics params. A dropped or reordered value
+        // would trip the stored state-hash check on load.
+        use genesis_config::{EnvFieldSpec, EnvSpec, FieldDynamics, FieldInit};
         let mut config = test_config();
         config.env = EnvSpec {
             cols: 8,
@@ -532,10 +554,16 @@ mod tests {
                 EnvFieldSpec {
                     name: "documentation only".into(),
                     init: FieldInit::GradientY { lo: -2.0, hi: 2.0 },
+                    dynamics: FieldDynamics {
+                        diffusion: 1.5,
+                        relax_rate: 0.25,
+                        relax_to: -1.0,
+                    },
                 },
                 EnvFieldSpec {
                     name: String::new(),
                     init: FieldInit::Uniform(7.25),
+                    dynamics: Default::default(),
                 },
             ],
         };
@@ -575,6 +603,7 @@ mod tests {
             fields: vec![EnvFieldSpec {
                 name: String::new(),
                 init: FieldInit::GradientX { lo: 0.0, hi: 1.0 },
+                dynamics: Default::default(),
             }],
         };
         let rules = RuleSet {
@@ -643,6 +672,7 @@ mod tests {
             fields: vec![EnvFieldSpec {
                 name: String::new(),
                 init: FieldInit::Uniform(0.0),
+                dynamics: Default::default(),
             }],
         };
         let act = |tick: u64, value: f32| PlayerAction {
