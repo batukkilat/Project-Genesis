@@ -10,7 +10,7 @@ use std::process::ExitCode;
 use std::time::Instant;
 
 use clap::{Parser, Subcommand};
-use genesis_config::{RulePack, SimConfig};
+use genesis_config::{ActionScript, RulePack, SimConfig};
 use genesis_sim::Simulation;
 use genesis_sim::interact::RuleSet;
 
@@ -32,6 +32,11 @@ enum Command {
         /// identity — a different pack is a different universe.
         #[arg(long)]
         rules: Option<PathBuf>,
+        /// RON player-action script: tick-stamped environment edits, applied
+        /// at the start of their stamped tick. Part of replay identity while
+        /// pending (Q-2026-07-08-B).
+        #[arg(long)]
+        actions: Option<PathBuf>,
         #[arg(long, default_value_t = 1000)]
         ticks: u64,
         /// Resume from a save file instead of creating a fresh world.
@@ -61,6 +66,10 @@ enum Command {
         /// RON rule pack to verify with (interactions active).
         #[arg(long)]
         rules: Option<PathBuf>,
+        /// RON player-action script to verify with. A scripted run passing
+        /// this four-way check is the Phase 4 exit criterion, executable.
+        #[arg(long)]
+        actions: Option<PathBuf>,
         #[arg(long, default_value_t = 1000)]
         ticks: u64,
     },
@@ -122,6 +131,13 @@ fn load_rules(path: &Option<PathBuf>) -> Result<RuleSet, Box<dyn std::error::Err
     }
 }
 
+fn load_actions(path: &Option<PathBuf>) -> Result<ActionScript, Box<dyn std::error::Error>> {
+    match path {
+        Some(p) => Ok(ActionScript::load(p)?),
+        None => Ok(ActionScript::default()),
+    }
+}
+
 /// Size the global rayon pool (0 = rayon's default, all cores). Thread count
 /// is a scheduling knob only — it never appears in replay identity.
 fn init_thread_pool(threads: usize) -> Result<(), Box<dyn std::error::Error>> {
@@ -138,6 +154,7 @@ fn run(cli: Cli) -> Result<ExitCode, Box<dyn std::error::Error>> {
         Command::Run {
             config,
             rules,
+            actions,
             ticks,
             load,
             save,
@@ -153,9 +170,18 @@ fn run(cli: Cli) -> Result<ExitCode, Box<dyn std::error::Error>> {
                                     is part of the save's replay identity"
                             .into());
                     }
+                    if actions.is_some() {
+                        return Err("--actions cannot be combined with --load: the pending \
+                                    action queue is part of the save's replay identity"
+                            .into());
+                    }
                     Simulation::from_snapshot(&genesis_persist::load_from_file(&path)?)
                 }
-                None => Simulation::with_rules(&load_config(&config)?, load_rules(&rules)?),
+                None => Simulation::with_rules_and_actions(
+                    &load_config(&config)?,
+                    load_rules(&rules)?,
+                    load_actions(&actions)?,
+                ),
             };
 
             // A structure counts as persistent once it has survived
@@ -221,13 +247,16 @@ fn run(cli: Cli) -> Result<ExitCode, Box<dyn std::error::Error>> {
         Command::Verify {
             config,
             rules,
+            actions,
             ticks,
         } => {
             let config = load_config(&config)?;
             let rule_set = load_rules(&rules)?;
+            let script = load_actions(&actions)?;
 
             let run_hash = |ticks: u64| {
-                let mut sim = Simulation::with_rules(&config, rule_set.clone());
+                let mut sim =
+                    Simulation::with_rules_and_actions(&config, rule_set.clone(), script.clone());
                 for _ in 0..ticks {
                     sim.tick();
                 }

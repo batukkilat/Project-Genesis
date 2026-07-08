@@ -33,6 +33,30 @@ fn load_small(path: &std::path::Path) -> SimConfig {
 }
 
 #[test]
+fn every_committed_action_script_loads_and_validates() {
+    // scripts/ is shipped content like configs/ and packs/: every script must
+    // load and pass structural validation. (Field indices are checked against
+    // a config at assembly; the canonical pairing is exercised in the sim
+    // test suite.)
+    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../scripts");
+    let mut checked = 0;
+    for entry in std::fs::read_dir(&dir).unwrap_or_else(|e| panic!("cannot read scripts/: {e}")) {
+        let path = entry.unwrap().path();
+        if path.extension().is_some_and(|ext| ext == "ron") {
+            let script = genesis_config::ActionScript::load(&path)
+                .unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+            assert!(
+                !script.actions.is_empty(),
+                "{}: script has no actions",
+                path.display()
+            );
+            checked += 1;
+        }
+    }
+    assert!(checked >= 1, "expected at least one shipped script");
+}
+
+#[test]
 fn every_committed_config_loads_and_validates() {
     for path in committed_configs() {
         // SimConfig::load runs validate(), so a bad LOD ladder or physics

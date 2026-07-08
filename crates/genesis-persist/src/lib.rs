@@ -6,7 +6,7 @@
 //!
 //! ```text
 //! magic            [u8; 4]  = b"GENS"
-//! format_version   u32      = 10
+//! format_version   u32      = 11
 //! engine_version   u16 len + utf-8 bytes (informational)
 //! tick             u64
 //! rng_state        u64
@@ -33,6 +33,10 @@
 //! env_rows         u32      (v9)
 //! env_field_count  u32      (v9)
 //! env_fields       count * (cols * rows f32 cell values, row-major)  (v9)
+//! pending_count    u32      (v11: pending player actions — replay identity
+//!                           only when non-empty; see state_hash)
+//! pending_actions  count * (tick u64, kind u8 (0 = set, 1 = add), field u32,
+//!                           x0 f32, y0 f32, x1 f32, y1 f32, amount f32) (v11)
 //! rule_count       u32      (v3: interaction rules joined replay identity)
 //! rules            rule_count * (28 f32 core (CompiledRule::fields order; v4
 //!                           appended bond action code + strength; v5
@@ -52,12 +56,12 @@ use std::fmt;
 use std::io::{Read, Write};
 use std::path::Path;
 
-use genesis_config::{LodPolicy, LodRung};
+use genesis_config::{ActionKind, LodPolicy, LodRung, PlayerAction, RegionSpec};
 use genesis_sim::interact::{Bounds, CompiledRule, EnvBound};
 use genesis_sim::snapshot::{BondSnap, ParticleSnap, WorldSnapshot};
 
 pub const MAGIC: [u8; 4] = *b"GENS";
-pub const FORMAT_VERSION: u32 = 10;
+pub const FORMAT_VERSION: u32 = 11;
 
 #[derive(Debug)]
 pub enum SaveError {
@@ -135,6 +139,32 @@ pub fn save_to_writer(snap: &WorldSnapshot, w: &mut impl Write) -> Result<(), Sa
         for v in field {
             w.write_all(&v.to_le_bytes())?;
         }
+    }
+
+    // Pending player actions (v11). Written unconditionally (possibly count
+    // 0); replay identity only when non-empty.
+    w.write_all(&(snap.pending_actions.len() as u32).to_le_bytes())?;
+    for a in &snap.pending_actions {
+        w.write_all(&a.tick.to_le_bytes())?;
+        let (code, field, region, amount) = match a.action {
+            ActionKind::FieldSet {
+                field,
+                region,
+                value,
+            } => (0u8, field, region, value),
+            ActionKind::FieldAdd {
+                field,
+                region,
+                delta,
+            } => (1u8, field, region, delta),
+        };
+        w.write_all(&[code])?;
+        w.write_all(&field.to_le_bytes())?;
+        w.write_all(&region.x0.to_le_bytes())?;
+        w.write_all(&region.y0.to_le_bytes())?;
+        w.write_all(&region.x1.to_le_bytes())?;
+        w.write_all(&region.y1.to_le_bytes())?;
+        w.write_all(&amount.to_le_bytes())?;
     }
 
     w.write_all(&(snap.rules.len() as u32).to_le_bytes())?;
@@ -235,6 +265,37 @@ pub fn load_from_reader(r: &mut impl Read) -> Result<WorldSnapshot, SaveError> {
         env_fields.push(field);
     }
 
+    let pending_count = read_u32(r)?;
+    let mut pending_actions = Vec::with_capacity(pending_count.min(1 << 16) as usize);
+    for _ in 0..pending_count {
+        let tick = read_u64(r)?;
+        let code = read_u8(r)?;
+        let field = read_u32(r)?;
+        let region = RegionSpec {
+            x0: read_f32(r)?,
+            y0: read_f32(r)?,
+            x1: read_f32(r)?,
+            y1: read_f32(r)?,
+        };
+        let amount = read_f32(r)?;
+        // An unknown kind code decodes to a set (like the bond-action code,
+        // the corrupt save then fails at its integrity-hash check).
+        let action = if code == 1 {
+            ActionKind::FieldAdd {
+                field,
+                region,
+                delta: amount,
+            }
+        } else {
+            ActionKind::FieldSet {
+                field,
+                region,
+                value: amount,
+            }
+        };
+        pending_actions.push(PlayerAction { tick, action });
+    }
+
     let rule_count = read_u32(r)?;
     let mut rules = Vec::with_capacity(rule_count.min(1 << 20) as usize);
     for _ in 0..rule_count {
@@ -302,6 +363,7 @@ pub fn load_from_reader(r: &mut impl Read) -> Result<WorldSnapshot, SaveError> {
         env_cols,
         env_rows,
         env_fields,
+        pending_actions,
         rules,
         particles,
         bonds,
@@ -563,6 +625,70 @@ mod tests {
             resumed.tick();
         }
         assert_eq!(sim.state_hash(), resumed.state_hash());
+    }
+
+    #[test]
+    fn pending_actions_survive_the_format() {
+        // Guards the v11 block: a mid-script save (one action applied, one
+        // pending) must round-trip bit-for-bit and resume into the identical
+        // future — the executable core of the Phase 4 exit criterion.
+        use genesis_config::{
+            ActionKind, ActionScript, EnvFieldSpec, EnvSpec, FieldInit, PlayerAction, RegionSpec,
+        };
+        use genesis_sim::interact::RuleSet;
+        let mut config = test_config();
+        config.env = EnvSpec {
+            cols: 8,
+            rows: 8,
+            fields: vec![EnvFieldSpec {
+                name: String::new(),
+                init: FieldInit::Uniform(0.0),
+            }],
+        };
+        let act = |tick: u64, value: f32| PlayerAction {
+            tick,
+            action: ActionKind::FieldAdd {
+                field: 0,
+                region: RegionSpec {
+                    x0: 0.0,
+                    y0: 0.0,
+                    x1: 2048.0,
+                    y1: 2048.0,
+                },
+                delta: value,
+            },
+        };
+        let script = ActionScript {
+            actions: vec![act(10, 1.0), act(50, -0.25)],
+        };
+        let make =
+            || Simulation::with_rules_and_actions(&config, RuleSet::default(), script.clone());
+        let mut sim = make();
+        let mut uninterrupted = make();
+        for _ in 0..30 {
+            sim.tick();
+            uninterrupted.tick();
+        }
+        let snap = sim.snapshot();
+        assert_eq!(snap.pending_actions.len(), 1, "tick-50 action must pend");
+
+        let mut bytes = Vec::new();
+        save_to_writer(&snap, &mut bytes).unwrap();
+        let back = load_from_reader(&mut bytes.as_slice()).unwrap();
+        assert_eq!(snap, back);
+        assert_eq!(snap.state_hash(), back.state_hash());
+
+        let mut resumed = Simulation::from_snapshot(&back);
+        for _ in 0..40 {
+            uninterrupted.tick();
+            resumed.tick();
+        }
+        assert_eq!(
+            uninterrupted.state_hash(),
+            resumed.state_hash(),
+            "resume mid-script diverged (the pending tick-50 edit must fire \
+             in both runs)"
+        );
     }
 
     #[test]

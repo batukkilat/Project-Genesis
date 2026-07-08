@@ -1,0 +1,26 @@
+// Example player-action script (Q-2026-07-08-B): tick-stamped environment
+// edits, the only player verbs. Applied at the start of the stamped tick;
+// pending actions are part of replay identity, so the same seed + config +
+// pack + script is always the identical universe.
+//
+//   genesis run    --config configs/env-gradient.ron --rules packs/bands.ron --actions scripts/terraform-west.ron
+//   genesis verify --config configs/env-gradient.ron --rules packs/bands.ron --actions scripts/terraform-west.ron
+//
+// On the env-gradient world, bands.ron chemistry only works where field 0
+// sits in [0.45, 0.75] — a vertical strip of the gradient. This script
+// terraforms the west half into that band mid-run: bonded structures that
+// could only accumulate in the strip start growing in the west afterward.
+// The verify line above is the Phase 4 exit criterion, executable: a player
+// script shapes an environment and replays identically.
+(
+    actions: [
+        (
+            tick: 2000,
+            action: FieldSet(
+                field: 0,
+                region: (x0: 0.0, y0: 0.0, x1: 512.0, y1: 1024.0),
+                value: 0.6,
+            ),
+        ),
+    ],
+)

@@ -18,7 +18,7 @@ pub mod snapshot;
 pub mod store;
 
 use bevy_ecs::prelude::*;
-use genesis_config::{LodPolicy, PhysicsParams, SimConfig};
+use genesis_config::{ActionScript, LodPolicy, PhysicsParams, PlayerAction, SimConfig};
 use genesis_core::DetRng;
 
 use bonds::BondStore;
@@ -63,8 +63,24 @@ pub struct Lod(pub LodPolicy);
 #[derive(Resource, Debug, Clone, Copy)]
 pub struct StreamSeed(pub u64);
 
+/// Player actions not yet applied (Q-2026-07-08-B), sorted by stamped tick
+/// (stable sort — script order wins ties) and drained at the start of each
+/// tick. Part of replay identity while pending: an applied action is already
+/// state (the env cells it wrote), so only this queue hashes.
+#[derive(Resource, Debug, Clone, Default)]
+pub struct Pending(pub Vec<PlayerAction>);
+
 fn advance_tick(mut tick: ResMut<Tick>) {
     tick.0 += 1;
+}
+
+/// Start-of-tick player-action drain: every action stamped for this tick
+/// edits the environment before anything simulates, in queue order.
+fn apply_player_actions(mut pending: ResMut<Pending>, mut env: ResMut<EnvFields>, tick: Res<Tick>) {
+    let due = pending.0.iter().take_while(|a| a.tick == tick.0).count();
+    for a in pending.0.drain(..due) {
+        env.apply_action(&a.action);
+    }
 }
 
 /// One simulation step: canonicalize layout, compute kernel forces, run
@@ -118,10 +134,19 @@ impl Simulation {
         Self::with_rules(config, RuleSet::default())
     }
 
-    /// Fresh simulation: spawns `config.particle_count` particles using RNG
-    /// streams derived from `config.seed`. The same validated config and
-    /// rule set always produce the same world.
+    /// Fresh simulation with rules and no player actions.
     pub fn with_rules(config: &SimConfig, rules: RuleSet) -> Self {
+        Self::with_rules_and_actions(config, rules, ActionScript::default())
+    }
+
+    /// Fresh simulation: spawns `config.particle_count` particles using RNG
+    /// streams derived from `config.seed`. The same validated config, rule
+    /// set, and action script always produce the same world.
+    pub fn with_rules_and_actions(
+        config: &SimConfig,
+        rules: RuleSet,
+        script: ActionScript,
+    ) -> Self {
         let mut master = DetRng::new(config.seed);
         let mut spawn_rng = master.split();
         let stream_seed = master.next_u64();
@@ -166,6 +191,7 @@ impl Simulation {
             BondStore::default(),
             config.lod.clone(),
             EnvFields::from_spec(&config.env, config.world_width, config.world_height),
+            script.actions,
         );
         tracing::info!(
             particles = config.particle_count,
@@ -232,6 +258,7 @@ impl Simulation {
                 snap.world_width,
                 snap.world_height,
             ),
+            snap.pending_actions.clone(),
         )
     }
 
@@ -247,8 +274,29 @@ impl Simulation {
         bonds: BondStore,
         lod: LodPolicy,
         env: EnvFields,
+        mut actions: Vec<PlayerAction>,
     ) -> Self {
         rules.assert_valid(params.physics.interaction_radius, env.field_count());
+        // Stable sort: script order breaks ties within a tick (Q-2026-07-08-B).
+        actions.sort_by_key(|a| a.tick);
+        for (i, a) in actions.iter().enumerate() {
+            assert!(
+                a.tick >= tick.0,
+                "action {i} is stamped for tick {} but the simulation is at tick {} — \
+                 a past-stamped action could never replay identically",
+                a.tick,
+                tick.0
+            );
+            let field = match a.action {
+                genesis_config::ActionKind::FieldSet { field, .. } => field,
+                genesis_config::ActionKind::FieldAdd { field, .. } => field,
+            };
+            assert!(
+                (field as usize) < env.field_count(),
+                "action {i} references env field {field} but the config declares {} field(s)",
+                env.field_count()
+            );
+        }
         let mut world = World::new();
         world.insert_resource(GridGeom::new(
             params.world_width,
@@ -265,9 +313,10 @@ impl Simulation {
         world.insert_resource(bonds);
         world.insert_resource(Lod(lod));
         world.insert_resource(env);
+        world.insert_resource(Pending(actions));
 
         let mut schedule = Schedule::default();
-        schedule.add_systems((sim_step, advance_tick).chain());
+        schedule.add_systems((apply_player_actions, sim_step, advance_tick).chain());
 
         Simulation { world, schedule }
     }
@@ -308,6 +357,7 @@ impl Simulation {
         let rules = self.world.resource::<RuleSet>().rules.clone();
         let lod = self.world.resource::<Lod>().0.clone();
         let env = self.world.resource::<EnvFields>();
+        let pending_actions = self.world.resource::<Pending>().0.clone();
         let store = self.world.resource::<ParticleStore>();
         let bond_store = self.world.resource::<BondStore>();
 
@@ -355,6 +405,7 @@ impl Simulation {
             env_cols: env.cols,
             env_rows: env.rows,
             env_fields: env.values.clone(),
+            pending_actions,
             rules,
             particles,
             bonds,
@@ -1207,6 +1258,243 @@ mod tests {
             uniform_hash,
             Simulation::new(&flat_gradient).state_hash(),
             "init specs that produce identical cell values must hash alike"
+        );
+    }
+
+    fn set_action(tick: u64, x0: f32, x1: f32, value: f32) -> genesis_config::PlayerAction {
+        genesis_config::PlayerAction {
+            tick,
+            action: genesis_config::ActionKind::FieldSet {
+                field: 0,
+                region: genesis_config::RegionSpec {
+                    x0,
+                    y0: 0.0,
+                    x1,
+                    y1: 256.0,
+                },
+                value,
+            },
+        }
+    }
+
+    fn script(actions: Vec<genesis_config::PlayerAction>) -> ActionScript {
+        ActionScript { actions }
+    }
+
+    #[test]
+    fn actions_apply_at_their_stamped_tick() {
+        // Field starts uniform 0; an action at tick 10 sets the west half to
+        // 2. The edit must be absent at tick 10's start-of-tick snapshot
+        // boundary (we observe after tick 9) and present after tick 10.
+        let mut config = test_config();
+        config.env = env_with(vec![field(genesis_config::FieldInit::Uniform(0.0))]);
+        let mut sim = Simulation::with_rules_and_actions(
+            &config,
+            RuleSet::default(),
+            script(vec![set_action(10, 0.0, 128.0, 2.0)]),
+        );
+        for _ in 0..10 {
+            sim.tick();
+        }
+        // Ticks 0..9 have run; the tick-10 drain has not happened yet.
+        let before = sim.snapshot();
+        assert!(
+            before.env_fields[0].iter().all(|&v| v == 0.0),
+            "edit applied too early"
+        );
+        assert_eq!(before.pending_actions.len(), 1, "action must still pend");
+        sim.tick();
+        let after = sim.snapshot();
+        assert!(after.pending_actions.is_empty(), "action must be consumed");
+        // 8x8 env grid over 256: west-half columns 0..3 edited, east half not.
+        for cy in 0..8 {
+            for cx in 0..8 {
+                let v = after.env_fields[0][cy * 8 + cx];
+                if cx < 4 {
+                    assert_eq!(v, 2.0, "west cell ({cx}, {cy}) not edited");
+                } else {
+                    assert_eq!(v, 0.0, "east cell ({cx}, {cy}) wrongly edited");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn scripted_run_is_deterministic_and_thread_invariant() {
+        let run = |threads: usize| {
+            let pool = rayon::ThreadPoolBuilder::new()
+                .num_threads(threads)
+                .build()
+                .unwrap();
+            pool.install(|| {
+                let mut config = gradient_config();
+                config.env = env_with(vec![field(genesis_config::FieldInit::Uniform(0.0))]);
+                let mut sim = Simulation::with_rules_and_actions(
+                    &config,
+                    banded_bond_rules(),
+                    script(vec![
+                        set_action(20, 128.0, 256.0, 1.0),
+                        set_action(60, 0.0, 128.0, 0.6),
+                    ]),
+                );
+                for _ in 0..100 {
+                    sim.tick();
+                }
+                sim.state_hash()
+            })
+        };
+        assert_eq!(run(1), run(1), "scripted run not deterministic");
+        assert_eq!(run(1), run(4), "actions broke thread-count invariance");
+    }
+
+    #[test]
+    fn pending_actions_are_replay_identity_applied_ones_are_state() {
+        // Pending: a queued future edit is a different universe from tick 0.
+        let mut config = test_config();
+        config.env = env_with(vec![field(genesis_config::FieldInit::Uniform(1.0))]);
+        let bare = Simulation::with_rules(&config, RuleSet::default());
+        let queued = Simulation::with_rules_and_actions(
+            &config,
+            RuleSet::default(),
+            script(vec![set_action(1000, 0.0, 128.0, 5.0)]),
+        );
+        assert_ne!(
+            bare.state_hash(),
+            queued.state_hash(),
+            "a pending action must be replay identity"
+        );
+
+        // Applied: an action that rewrites the value already there leaves a
+        // byte-identical simulation once consumed — identical hash, exactly
+        // like the disabled-LOD / empty-env precedents.
+        let mut noop_sim = Simulation::with_rules_and_actions(
+            &config,
+            RuleSet::default(),
+            script(vec![set_action(3, 0.0, 128.0, 1.0)]),
+        );
+        let mut bare_sim = Simulation::with_rules(&config, RuleSet::default());
+        for _ in 0..10 {
+            noop_sim.tick();
+            bare_sim.tick();
+        }
+        assert_eq!(
+            noop_sim.state_hash(),
+            bare_sim.state_hash(),
+            "an applied no-op edit left a trace — applied actions must be \
+             state only, never separately hashed"
+        );
+    }
+
+    #[test]
+    fn resume_mid_script_matches_uninterrupted() {
+        let mut config = gradient_config();
+        config.env = env_with(vec![field(genesis_config::FieldInit::Uniform(0.0))]);
+        let make = || {
+            Simulation::with_rules_and_actions(
+                &config,
+                banded_bond_rules(),
+                script(vec![
+                    set_action(20, 128.0, 256.0, 1.0),
+                    set_action(60, 0.0, 128.0, 1.0),
+                ]),
+            )
+        };
+        let mut a = make();
+        let mut b = make();
+        for _ in 0..40 {
+            a.tick();
+            b.tick();
+        }
+        let snap = b.snapshot();
+        assert_eq!(
+            snap.pending_actions.len(),
+            1,
+            "the tick-60 action must still pend in the save"
+        );
+        let mut resumed = Simulation::from_snapshot(&snap);
+        drop(b);
+        for _ in 0..40 {
+            a.tick();
+            resumed.tick();
+        }
+        assert_eq!(
+            a.state_hash(),
+            resumed.state_hash(),
+            "resume mid-script diverged from the uninterrupted run"
+        );
+    }
+
+    #[test]
+    fn scripted_environment_change_redirects_emergence() {
+        // The Phase 4 exit criterion end-to-end: a player script shapes the
+        // environment, and *where* structure emerges follows. The bond gate
+        // needs field >= 0.5 but the world starts uniform 0 — nothing can
+        // bond anywhere. At tick 50 the script opens the east half.
+        let mut config = gradient_config();
+        config.env = env_with(vec![field(genesis_config::FieldInit::Uniform(0.0))]);
+        let mut sim = Simulation::with_rules_and_actions(
+            &config,
+            banded_bond_rules(),
+            script(vec![set_action(50, 128.0, 256.0, 1.0)]),
+        );
+        for _ in 0..50 {
+            sim.tick();
+        }
+        assert!(
+            sim.snapshot().bonds.is_empty(),
+            "no bonds may form before the script opens the gate"
+        );
+        for _ in 0..100 {
+            sim.tick();
+        }
+        let snap = sim.snapshot();
+        assert!(
+            !snap.bonds.is_empty(),
+            "the scripted edit opened the gate — bonds must have formed"
+        );
+        let x_of: std::collections::BTreeMap<u64, f32> =
+            snap.particles.iter().map(|p| (p.id, p.pos_x)).collect();
+        let bonded_x: Vec<f32> = snap
+            .bonds
+            .iter()
+            .flat_map(|b| [x_of[&b.a], x_of[&b.b]])
+            .collect();
+        let west = bonded_x.iter().filter(|&&x| x < 100.0).count();
+        assert!(
+            (west as f32) < 0.05 * bonded_x.len() as f32,
+            "{west} of {} bonded endpoints in the still-closed west half",
+            bonded_x.len()
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "past-stamped")]
+    fn past_stamped_action_is_rejected() {
+        // Resume at tick 40 with a hand-built snapshot carrying a tick-10
+        // action: it could never replay identically, so assembly must refuse.
+        let mut config = test_config();
+        config.env = env_with(vec![field(genesis_config::FieldInit::Uniform(0.0))]);
+        let mut sim = Simulation::with_rules_and_actions(
+            &config,
+            RuleSet::default(),
+            script(vec![set_action(100, 0.0, 128.0, 1.0)]),
+        );
+        for _ in 0..40 {
+            sim.tick();
+        }
+        let mut snap = sim.snapshot();
+        snap.pending_actions[0].tick = 10;
+        let _ = Simulation::from_snapshot(&snap);
+    }
+
+    #[test]
+    #[should_panic(expected = "references env field")]
+    fn action_referencing_missing_env_field_is_rejected() {
+        // No env fields declared, but the script edits field 0.
+        let _ = Simulation::with_rules_and_actions(
+            &test_config(),
+            RuleSet::default(),
+            script(vec![set_action(10, 0.0, 128.0, 1.0)]),
         );
     }
 

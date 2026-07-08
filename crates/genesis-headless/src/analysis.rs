@@ -232,6 +232,7 @@ mod tests {
             env_cols: 0,
             env_rows: 0,
             env_fields: Vec::new(),
+            pending_actions: Vec::new(),
             rules: Vec::new(),
             particles: ids
                 .iter()

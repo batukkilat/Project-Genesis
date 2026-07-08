@@ -4,7 +4,7 @@
 //! (later) the Observer and renderer. Particles are always sorted by id, so
 //! the same state always produces the same bytes and the same hash.
 
-use genesis_config::LodPolicy;
+use genesis_config::{ActionKind, LodPolicy, PlayerAction};
 use genesis_core::StateHasher;
 
 use crate::interact::CompiledRule;
@@ -60,6 +60,12 @@ pub struct WorldSnapshot {
     /// are state: part of replay identity when any are declared, contributing
     /// nothing when empty (Q-2026-07-08-A, the LOD precedent).
     pub env_fields: Vec<Vec<f32>>,
+    /// Player actions not yet applied, sorted by stamped tick
+    /// (Q-2026-07-08-B). Part of replay identity when non-empty — two runs
+    /// with identical current state but different pending edits have
+    /// different futures. Applied actions contribute nothing here; their
+    /// effect lives in `env_fields`.
+    pub pending_actions: Vec<PlayerAction>,
     /// Active interaction rules — content, and therefore replay identity.
     pub rules: Vec<CompiledRule>,
     /// Sorted by id ascending.
@@ -115,6 +121,35 @@ impl WorldSnapshot {
                 for &v in field {
                     h.write_f32(v);
                 }
+            }
+        }
+        // Pending player actions enter replay identity only while queued: an
+        // action-free run keeps its exact identity, and an applied action is
+        // already covered by the env cell values above (Q-2026-07-08-B).
+        if !self.pending_actions.is_empty() {
+            h.write_u64(4);
+            h.write_u64(self.pending_actions.len() as u64);
+            for a in &self.pending_actions {
+                h.write_u64(a.tick);
+                let (code, field, region, amount) = match a.action {
+                    ActionKind::FieldSet {
+                        field,
+                        region,
+                        value,
+                    } => (0u64, field, region, value),
+                    ActionKind::FieldAdd {
+                        field,
+                        region,
+                        delta,
+                    } => (1u64, field, region, delta),
+                };
+                h.write_u64(code);
+                h.write_u64(field as u64);
+                h.write_f32(region.x0);
+                h.write_f32(region.y0);
+                h.write_f32(region.x1);
+                h.write_f32(region.y1);
+                h.write_f32(amount);
             }
         }
         h.write_u64(self.rules.len() as u64);

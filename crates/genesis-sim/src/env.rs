@@ -105,6 +105,40 @@ impl EnvFields {
     pub fn sample(&self, k: usize, x: f32, y: f32) -> f32 {
         self.values[k][self.cell_of(x, y) as usize]
     }
+
+    /// Apply one player action (Q-2026-07-08-B): edit every cell whose
+    /// center falls inside the action's region. Field indices are validated
+    /// at simulation assembly. Single-threaded, called from the start-of-tick
+    /// drain — cell iteration order is fixed, and set/add on disjoint cells
+    /// is order-free anyway.
+    pub fn apply_action(&mut self, kind: &genesis_config::ActionKind) {
+        match *kind {
+            genesis_config::ActionKind::FieldSet {
+                field,
+                region,
+                value,
+            } => self.edit(field, &region, |_| value),
+            genesis_config::ActionKind::FieldAdd {
+                field,
+                region,
+                delta,
+            } => self.edit(field, &region, |v| v + delta),
+        }
+    }
+
+    fn edit(&mut self, field: u32, region: &genesis_config::RegionSpec, f: impl Fn(f32) -> f32) {
+        let grid = &mut self.values[field as usize];
+        for cy in 0..self.rows {
+            let y = (cy as f32 + 0.5) * self.cell_h;
+            for cx in 0..self.cols {
+                let x = (cx as f32 + 0.5) * self.cell_w;
+                if region.contains(x, y) {
+                    let cell = (cy * self.cols + cx) as usize;
+                    grid[cell] = f(grid[cell]);
+                }
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -194,6 +228,41 @@ mod tests {
         // x / cell_w rounds up.
         let c = env.cell_of(99.999_999, 99.999_999);
         assert!(c < 9);
+    }
+
+    #[test]
+    fn apply_action_edits_cells_by_center() {
+        use genesis_config::{ActionKind, RegionSpec};
+        // 4x4 grid over 64x64: cell centers at 8, 24, 40, 56.
+        let mut env = EnvFields::from_spec(&spec(4, 4, vec![FieldInit::Uniform(1.0)]), 64.0, 64.0);
+        // Region covering centers 8 and 24 in x, 8 in y (half-open at 25).
+        env.apply_action(&ActionKind::FieldSet {
+            field: 0,
+            region: RegionSpec {
+                x0: 0.0,
+                y0: 0.0,
+                x1: 25.0,
+                y1: 9.0,
+            },
+            value: 7.0,
+        });
+        assert_eq!(env.values[0][0], 7.0);
+        assert_eq!(env.values[0][1], 7.0);
+        assert_eq!(env.values[0][2], 1.0, "center 40 is outside x1=25");
+        assert_eq!(env.values[0][4], 1.0, "center y=24 is outside y1=9");
+
+        env.apply_action(&ActionKind::FieldAdd {
+            field: 0,
+            region: RegionSpec {
+                x0: 0.0,
+                y0: 0.0,
+                x1: 9.0,
+                y1: 9.0,
+            },
+            delta: -2.5,
+        });
+        assert_eq!(env.values[0][0], 4.5, "add composes on the set value");
+        assert_eq!(env.values[0][1], 7.0, "outside the add region");
     }
 
     #[test]
