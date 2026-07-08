@@ -9,6 +9,7 @@
 //! parallel iteration.
 
 pub mod bonds;
+pub mod env;
 pub mod grid;
 pub mod interact;
 pub mod lod;
@@ -21,6 +22,7 @@ use genesis_config::{LodPolicy, PhysicsParams, SimConfig};
 use genesis_core::DetRng;
 
 use bonds::BondStore;
+use env::EnvFields;
 use grid::GridGeom;
 use interact::RuleSet;
 use snapshot::{BondSnap, ParticleSnap, WorldSnapshot};
@@ -161,6 +163,7 @@ impl Simulation {
             store,
             BondStore::default(),
             config.lod.clone(),
+            EnvFields::from_spec(&config.env, config.world_width, config.world_height),
         );
         tracing::info!(
             particles = config.particle_count,
@@ -220,6 +223,13 @@ impl Simulation {
             // The policy is now part of the snapshot, so an enabled-LOD run
             // resumes into the identical universe it was saved from.
             snap.lod.clone(),
+            EnvFields::from_parts(
+                snap.env_cols,
+                snap.env_rows,
+                snap.env_fields.clone(),
+                snap.world_width,
+                snap.world_height,
+            ),
         )
     }
 
@@ -234,6 +244,7 @@ impl Simulation {
         store: ParticleStore,
         bonds: BondStore,
         lod: LodPolicy,
+        env: EnvFields,
     ) -> Self {
         rules.assert_valid(params.physics.interaction_radius);
         let mut world = World::new();
@@ -251,6 +262,7 @@ impl Simulation {
         world.insert_resource(store);
         world.insert_resource(bonds);
         world.insert_resource(Lod(lod));
+        world.insert_resource(env);
 
         let mut schedule = Schedule::default();
         schedule.add_systems((sim_step, advance_tick).chain());
@@ -293,6 +305,7 @@ impl Simulation {
         let stream_seed = self.world.resource::<StreamSeed>().0;
         let rules = self.world.resource::<RuleSet>().rules.clone();
         let lod = self.world.resource::<Lod>().0.clone();
+        let env = self.world.resource::<EnvFields>();
         let store = self.world.resource::<ParticleStore>();
         let bond_store = self.world.resource::<BondStore>();
 
@@ -337,6 +350,9 @@ impl Simulation {
             information_decay: params.physics.information_decay,
             information_max: params.physics.information_max,
             lod,
+            env_cols: env.cols,
+            env_rows: env.rows,
+            env_fields: env.values.clone(),
             rules,
             particles,
             bonds,
@@ -1112,6 +1128,105 @@ mod tests {
             resumed.tick();
         }
         assert_eq!(uninterrupted.state_hash(), resumed.state_hash());
+    }
+
+    fn env_with(fields: Vec<genesis_config::EnvFieldSpec>) -> genesis_config::EnvSpec {
+        genesis_config::EnvSpec {
+            cols: 8,
+            rows: 8,
+            fields,
+        }
+    }
+
+    fn field(init: genesis_config::FieldInit) -> genesis_config::EnvFieldSpec {
+        genesis_config::EnvFieldSpec {
+            name: String::new(),
+            init,
+        }
+    }
+
+    #[test]
+    fn empty_env_is_not_replay_identity() {
+        // No declared fields = no environment: grid dims are never read, so
+        // two configs differing only in empty-env cosmetics produce identical
+        // universes AND identical hashes — pre-env runs keep their identity.
+        let mut a = test_config();
+        a.env = genesis_config::EnvSpec {
+            cols: 4,
+            rows: 4,
+            fields: vec![],
+        };
+        let mut b = test_config();
+        b.env = genesis_config::EnvSpec {
+            cols: 64,
+            rows: 16,
+            fields: vec![],
+        };
+        let mut sa = Simulation::with_rules(&a, bonding_rules());
+        let mut sb = Simulation::with_rules(&b, bonding_rules());
+        assert_eq!(sa.state_hash(), sb.state_hash());
+        for _ in 0..50 {
+            sa.tick();
+            sb.tick();
+        }
+        assert_eq!(
+            sa.state_hash(),
+            sb.state_hash(),
+            "an empty env spec perturbed replay identity"
+        );
+    }
+
+    #[test]
+    fn declared_env_fields_are_replay_identity() {
+        use genesis_config::FieldInit;
+        let bare = Simulation::new(&test_config()).state_hash();
+
+        let mut uniform = test_config();
+        uniform.env = env_with(vec![field(FieldInit::Uniform(1.0))]);
+        let uniform_hash = Simulation::new(&uniform).state_hash();
+
+        let mut other_value = test_config();
+        other_value.env = env_with(vec![field(FieldInit::Uniform(2.0))]);
+        let other_hash = Simulation::new(&other_value).state_hash();
+
+        assert_ne!(bare, uniform_hash, "declared fields must change identity");
+        assert_ne!(uniform_hash, other_hash, "cell values are the identity");
+
+        // Identity is the *values*, not the init spec: a gradient that
+        // degenerates to the same constant is the same universe.
+        let mut flat_gradient = test_config();
+        flat_gradient.env = env_with(vec![field(FieldInit::GradientX { lo: 1.0, hi: 1.0 })]);
+        assert_eq!(
+            uniform_hash,
+            Simulation::new(&flat_gradient).state_hash(),
+            "init specs that produce identical cell values must hash alike"
+        );
+    }
+
+    #[test]
+    fn env_fields_survive_save_resume() {
+        use genesis_config::FieldInit;
+        let mut config = test_config();
+        config.env = env_with(vec![
+            field(FieldInit::GradientX { lo: 0.0, hi: 4.0 }),
+            field(FieldInit::Uniform(0.5)),
+        ]);
+        let mut a = Simulation::with_rules(&config, bonding_rules());
+        let mut b = Simulation::with_rules(&config, bonding_rules());
+        for _ in 0..30 {
+            a.tick();
+            b.tick();
+        }
+        let snap = b.snapshot();
+        assert_eq!(snap.env_fields.len(), 2);
+        let mut resumed = Simulation::from_snapshot(&snap);
+        drop(b);
+        assert_eq!(a.state_hash(), resumed.state_hash());
+        for _ in 0..30 {
+            a.tick();
+            resumed.tick();
+        }
+        assert_eq!(a.state_hash(), resumed.state_hash());
     }
 
     #[test]

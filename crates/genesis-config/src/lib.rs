@@ -217,6 +217,103 @@ impl LodPolicy {
     }
 }
 
+/// Initial value of an environment field, evaluated at each env-cell center
+/// when the world is created. Fully consumed at creation (like `initial`
+/// particle ranges): not part of replay identity — the resulting cell values
+/// are.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+pub enum FieldInit {
+    /// The same value everywhere.
+    Uniform(f32),
+    /// Linear west→east ramp: `lo` at x = 0, `hi` at x = world_width. The
+    /// torus seam is a hard step by design.
+    GradientX { lo: f32, hi: f32 },
+    /// Linear north→south ramp: `lo` at y = 0, `hi` at y = world_height.
+    GradientY { lo: f32, hi: f32 },
+}
+
+impl FieldInit {
+    /// Value at a normalized cell-center coordinate (u, v) in [0, 1)².
+    pub fn value_at(&self, u: f32, v: f32) -> f32 {
+        match *self {
+            FieldInit::Uniform(x) => x,
+            FieldInit::GradientX { lo, hi } => lo + (hi - lo) * u,
+            FieldInit::GradientY { lo, hi } => lo + (hi - lo) * v,
+        }
+    }
+
+    fn validate(&self, i: usize) -> Result<(), ConfigError> {
+        let finite = |v: f32| v.is_finite();
+        let ok = match *self {
+            FieldInit::Uniform(x) => finite(x),
+            FieldInit::GradientX { lo, hi } | FieldInit::GradientY { lo, hi } => {
+                finite(lo) && finite(hi)
+            }
+        };
+        if ok {
+            Ok(())
+        } else {
+            Err(ConfigError::Invalid(format!(
+                "env.fields[{i}] init values must be finite"
+            )))
+        }
+    }
+}
+
+/// One declared environment field. The engine knows fields only by index;
+/// `name` is documentation for authors and (later) UI/Observer labeling —
+/// never read by the simulation, never hashed, never saved. Two configs
+/// differing only in names are the same universe (Q-2026-07-08-A).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct EnvFieldSpec {
+    #[serde(default)]
+    pub name: String,
+    pub init: FieldInit,
+}
+
+/// Planet-scale environment fields (Q-2026-07-08-A): generic indexed scalar
+/// fields sampled on their own coarse torus-aligned grid, deliberately
+/// decoupled from the interaction grid and LOD chunks. Empty (the default)
+/// means no environment — nothing is stored, hashed, or paid for.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct EnvSpec {
+    /// Env grid columns; all fields share one grid.
+    pub cols: u32,
+    /// Env grid rows.
+    pub rows: u32,
+    pub fields: Vec<EnvFieldSpec>,
+}
+
+impl Default for EnvSpec {
+    fn default() -> Self {
+        EnvSpec {
+            cols: 32,
+            rows: 32,
+            fields: Vec::new(),
+        }
+    }
+}
+
+impl EnvSpec {
+    fn validate(&self) -> Result<(), ConfigError> {
+        // No fields = no environment; the grid dims are never read, so don't
+        // constrain them (same posture as a disabled LOD policy).
+        if self.fields.is_empty() {
+            return Ok(());
+        }
+        if self.cols == 0 || self.rows == 0 {
+            return Err(ConfigError::Invalid(
+                "env.cols and env.rows must be >= 1 when fields are declared".into(),
+            ));
+        }
+        for (i, f) in self.fields.iter().enumerate() {
+            f.init.validate(i)?;
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct SimConfig {
@@ -232,6 +329,9 @@ pub struct SimConfig {
     /// Adaptive simulation detail. Disabled by default — omit it and the
     /// simulation runs every particle every tick, exactly as before.
     pub lod: LodPolicy,
+    /// Environment fields. Empty by default — omit it and the world has no
+    /// environment, exactly as before.
+    pub env: EnvSpec,
 }
 
 impl Default for SimConfig {
@@ -250,6 +350,7 @@ impl Default for SimConfig {
             },
             physics: PhysicsParams::default(),
             lod: LodPolicy::default(),
+            env: EnvSpec::default(),
         }
     }
 }
@@ -381,6 +482,7 @@ impl SimConfig {
             ));
         }
         self.lod.validate()?;
+        self.env.validate()?;
         Ok(())
     }
 
@@ -656,6 +758,90 @@ mod tests {
             ladder: vec![],
         };
         p.validate().unwrap();
+    }
+
+    #[test]
+    fn env_omitted_from_ron_deserializes_to_empty() {
+        // Existing configs predate the `env` field; they must still load.
+        let config: SimConfig = ron::from_str("(seed: 7)").unwrap();
+        assert_eq!(config.env, EnvSpec::default());
+        assert!(config.env.fields.is_empty());
+        config.validate().unwrap();
+    }
+
+    #[test]
+    fn env_ron_roundtrip() {
+        let config = SimConfig {
+            env: EnvSpec {
+                cols: 16,
+                rows: 8,
+                fields: vec![
+                    EnvFieldSpec {
+                        name: "warmth".into(),
+                        init: FieldInit::Uniform(1.5),
+                    },
+                    EnvFieldSpec {
+                        name: String::new(),
+                        init: FieldInit::GradientX { lo: 0.0, hi: 4.0 },
+                    },
+                ],
+            },
+            ..Default::default()
+        };
+        config.validate().unwrap();
+        let text = ron::ser::to_string(&config).unwrap();
+        let back: SimConfig = ron::from_str(&text).unwrap();
+        assert_eq!(config, back);
+    }
+
+    #[test]
+    fn field_init_value_at() {
+        assert_eq!(FieldInit::Uniform(3.0).value_at(0.9, 0.1), 3.0);
+        let gx = FieldInit::GradientX { lo: 0.0, hi: 10.0 };
+        assert_eq!(gx.value_at(0.0, 0.5), 0.0);
+        assert_eq!(gx.value_at(0.5, 0.9), 5.0);
+        let gy = FieldInit::GradientY { lo: -1.0, hi: 1.0 };
+        assert_eq!(gy.value_at(0.3, 0.5), 0.0);
+    }
+
+    #[test]
+    #[allow(clippy::field_reassign_with_default)] // mutate-one-field-per-case reads best here
+    fn env_rejects_bad_values() {
+        let field = |init| EnvFieldSpec {
+            name: String::new(),
+            init,
+        };
+
+        // Zero grid with fields declared.
+        let mut config = SimConfig::default();
+        config.env = EnvSpec {
+            cols: 0,
+            rows: 8,
+            fields: vec![field(FieldInit::Uniform(1.0))],
+        };
+        assert!(config.validate().is_err());
+
+        // Non-finite init value.
+        let mut config = SimConfig::default();
+        config.env.fields = vec![field(FieldInit::Uniform(f32::NAN))];
+        assert!(config.validate().is_err());
+
+        let mut config = SimConfig::default();
+        config.env.fields = vec![field(FieldInit::GradientX {
+            lo: 0.0,
+            hi: f32::INFINITY,
+        })];
+        assert!(config.validate().is_err());
+
+        // No fields = inert: even a nonsense grid must load (the off switch
+        // never fails).
+        let mut config = SimConfig::default();
+        config.env = EnvSpec {
+            cols: 0,
+            rows: 0,
+            fields: vec![],
+        };
+        config.validate().unwrap();
     }
 
     #[test]

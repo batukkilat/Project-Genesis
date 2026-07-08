@@ -53,6 +53,13 @@ pub struct WorldSnapshot {
     /// disabled policy has no effect, so it must not perturb the hash — see
     /// `state_hash`).
     pub lod: LodPolicy,
+    /// Environment grid dims. Meaningful only when `env_fields` is non-empty.
+    pub env_cols: u32,
+    pub env_rows: u32,
+    /// Environment field cell values, one row-major grid per field. Fields
+    /// are state: part of replay identity when any are declared, contributing
+    /// nothing when empty (Q-2026-07-08-A, the LOD precedent).
+    pub env_fields: Vec<Vec<f32>>,
     /// Active interaction rules — content, and therefore replay identity.
     pub rules: Vec<CompiledRule>,
     /// Sorted by id ascending.
@@ -93,6 +100,21 @@ impl WorldSnapshot {
             for rung in &self.lod.ladder {
                 h.write_f32(rung.min_activity);
                 h.write_u64(rung.rate as u64);
+            }
+        }
+        // Environment fields enter replay identity only when declared: a world
+        // with no fields is byte-identical to one that predates them, so it
+        // must hash identically (Q-2026-07-08-A). The leading tag keeps this
+        // conditional block from colliding with the LOD block above.
+        if !self.env_fields.is_empty() {
+            h.write_u64(2);
+            h.write_u64(self.env_cols as u64);
+            h.write_u64(self.env_rows as u64);
+            h.write_u64(self.env_fields.len() as u64);
+            for field in &self.env_fields {
+                for &v in field {
+                    h.write_f32(v);
+                }
             }
         }
         h.write_u64(self.rules.len() as u64);

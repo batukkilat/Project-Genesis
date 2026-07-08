@@ -229,6 +229,9 @@ mod tests {
             information_decay: 0.0,
             information_max: 1e30,
             lod: genesis_config::LodPolicy::default(),
+            env_cols: 0,
+            env_rows: 0,
+            env_fields: Vec::new(),
             rules: Vec::new(),
             particles: ids
                 .iter()

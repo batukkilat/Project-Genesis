@@ -6,7 +6,7 @@
 //!
 //! ```text
 //! magic            [u8; 4]  = b"GENS"
-//! format_version   u32      = 8
+//! format_version   u32      = 9
 //! engine_version   u16 len + utf-8 bytes (informational)
 //! tick             u64
 //! rng_state        u64
@@ -28,6 +28,11 @@
 //! lod_chunk_cells  u32      (v8)
 //! lod_ladder_len   u32      (v8)
 //! lod_ladder       len * (min_activity f32, rate u32)   (v8)
+//! env_cols         u32      (v9: environment fields joined replay identity —
+//!                           only when declared; see state_hash)
+//! env_rows         u32      (v9)
+//! env_field_count  u32      (v9)
+//! env_fields       count * (cols * rows f32 cell values, row-major)  (v9)
 //! rule_count       u32      (v3: interaction rules joined replay identity)
 //! rules            rule_count * 28 f32 (CompiledRule::fields order; v4
 //!                           appended bond action code + strength; v5
@@ -50,7 +55,7 @@ use genesis_sim::interact::CompiledRule;
 use genesis_sim::snapshot::{BondSnap, ParticleSnap, WorldSnapshot};
 
 pub const MAGIC: [u8; 4] = *b"GENS";
-pub const FORMAT_VERSION: u32 = 8;
+pub const FORMAT_VERSION: u32 = 9;
 
 #[derive(Debug)]
 pub enum SaveError {
@@ -117,6 +122,17 @@ pub fn save_to_writer(snap: &WorldSnapshot, w: &mut impl Write) -> Result<(), Sa
     for rung in &snap.lod.ladder {
         w.write_all(&rung.min_activity.to_le_bytes())?;
         w.write_all(&rung.rate.to_le_bytes())?;
+    }
+
+    // Environment fields (v9). Written unconditionally so the container stays
+    // self-describing; they enter replay identity only when declared.
+    w.write_all(&snap.env_cols.to_le_bytes())?;
+    w.write_all(&snap.env_rows.to_le_bytes())?;
+    w.write_all(&(snap.env_fields.len() as u32).to_le_bytes())?;
+    for field in &snap.env_fields {
+        for v in field {
+            w.write_all(&v.to_le_bytes())?;
+        }
     }
 
     w.write_all(&(snap.rules.len() as u32).to_le_bytes())?;
@@ -196,6 +212,19 @@ pub fn load_from_reader(r: &mut impl Read) -> Result<WorldSnapshot, SaveError> {
         ladder,
     };
 
+    let env_cols = read_u32(r)?;
+    let env_rows = read_u32(r)?;
+    let env_field_count = read_u32(r)?;
+    let env_cell_count = env_cols as usize * env_rows as usize;
+    let mut env_fields = Vec::with_capacity(env_field_count.min(1 << 10) as usize);
+    for _ in 0..env_field_count {
+        let mut field = Vec::with_capacity(env_cell_count.min(1 << 24));
+        for _ in 0..env_cell_count {
+            field.push(read_f32(r)?);
+        }
+        env_fields.push(field);
+    }
+
     let rule_count = read_u32(r)?;
     let mut rules = Vec::with_capacity(rule_count.min(1 << 20) as usize);
     for _ in 0..rule_count {
@@ -248,6 +277,9 @@ pub fn load_from_reader(r: &mut impl Read) -> Result<WorldSnapshot, SaveError> {
         information_decay,
         information_max,
         lod,
+        env_cols,
+        env_rows,
+        env_fields,
         rules,
         particles,
         bonds,
@@ -386,6 +418,50 @@ mod tests {
         }
         let snap = sim.snapshot();
         assert!(snap.lod.enabled);
+
+        let mut bytes = Vec::new();
+        save_to_writer(&snap, &mut bytes).unwrap();
+        let back = load_from_reader(&mut bytes.as_slice()).unwrap();
+        assert_eq!(snap, back);
+        assert_eq!(snap.state_hash(), back.state_hash());
+
+        let mut resumed = Simulation::from_snapshot(&back);
+        for _ in 0..40 {
+            sim.tick();
+            resumed.tick();
+        }
+        assert_eq!(sim.state_hash(), resumed.state_hash());
+    }
+
+    #[test]
+    fn env_fields_survive_the_format() {
+        // Guards the v9 block: declared fields (in replay identity) must
+        // round-trip bit-for-bit, and resuming must reproduce the identical
+        // universe. A dropped or reordered value would trip the stored
+        // state-hash check on load.
+        use genesis_config::{EnvFieldSpec, EnvSpec, FieldInit};
+        let mut config = test_config();
+        config.env = EnvSpec {
+            cols: 8,
+            rows: 4,
+            fields: vec![
+                EnvFieldSpec {
+                    name: "documentation only".into(),
+                    init: FieldInit::GradientY { lo: -2.0, hi: 2.0 },
+                },
+                EnvFieldSpec {
+                    name: String::new(),
+                    init: FieldInit::Uniform(7.25),
+                },
+            ],
+        };
+        let mut sim = Simulation::new(&config);
+        for _ in 0..20 {
+            sim.tick();
+        }
+        let snap = sim.snapshot();
+        assert_eq!(snap.env_fields.len(), 2);
+        assert_eq!(snap.env_fields[0].len(), 32);
 
         let mut bytes = Vec::new();
         save_to_writer(&snap, &mut bytes).unwrap();
