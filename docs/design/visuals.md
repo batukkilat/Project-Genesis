@@ -81,7 +81,7 @@ shipping them first validates snapshot→screen throughput before any styling.
 
 - Interpolation vs sim-locked frames when time warp outruns render rate
   (likely: render latest snapshot, interpolate only at 1× speed).
-- Whether Observer annotations (Phase 5 hypotheses) render as outlines or
-  stay UI-panel-only. Bias: panel-only first — drawing outlines around
-  "possible organisms" edits the player's perception of emergence.
+- ~~Whether Observer annotations (Phase 5 hypotheses) render as outlines or
+  stay UI-panel-only.~~ Settled 2026-07-08 (owner): panel-only — see
+  docs/design/ui.md and the ROADMAP decisions log.
 - Palette/mapping file format (probably RON, same loader idioms as packs).
