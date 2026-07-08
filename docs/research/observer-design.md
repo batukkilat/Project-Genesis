@@ -136,3 +136,5 @@ observer ids) — the narrator needs the story, not the roster.
 4. Hypotheses v1 (F5) + timeline dump (F6); `genesis run --report`
    switches to the crate; exit-criteria review against chains.ron /
    bands.ron runs (does the observer flag what we see by eye?).
+   **Landed 2026-07-08; review passed** —
+   docs/research/phase5-exit-review.md. All four steps complete.

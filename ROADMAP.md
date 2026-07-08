@@ -158,8 +158,18 @@ identity; ids never reused), exposed via `genesis run --observer`.
 **Step 3 (metrics v1) landed 2026-07-08** (Q-2026-07-08-D): persistence,
 stability (Jaccard of consecutive memberships), complexity
 (`ln(size) + degree-entropy + ln(1 + mean_degree)`), information
-retention — per structure per sample, deterministic. Next: hypotheses
-v1, timeline recording (landing order in the design doc).
+retention — per structure per sample, deterministic.
+**Step 4 (hypotheses v1 + timeline) landed 2026-07-08**
+(Q-2026-07-08-E): *possibly self-maintaining* and *possibly growing*,
+confidence-scored, positives-only; timeline records (tick, stats,
+metrics, hypotheses) per sample, RON-dumpable via
+`genesis run --timeline`. **Exit-criteria review passed 2026-07-08**
+(docs/research/phase5-exit-review.md): hypotheses track what the eye
+sees in chains.ron and bands.ron runs; observer on/off produces the
+identical state hash at both library and CLI level. Phase 6 may begin.
+Deferred (recorded in the design doc): adaptation metric, richer
+hypotheses, zero-copy snapshots (open design question 4 — a Phase 6
+problem).
 
 Deliverables:
 
