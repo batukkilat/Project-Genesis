@@ -6,7 +6,7 @@
 //! against future refactors all the same.
 
 use genesis_config::{Range, SimConfig};
-use genesis_observer::StructureTracker;
+use genesis_observer::{ObserverConfig, StructureTracker};
 use genesis_sim::Simulation;
 use genesis_sim::interact::{BondAction, Bounds, CompiledRule, QuantityCondition, RuleSet};
 
@@ -65,7 +65,10 @@ fn observer_on_or_off_identical_state_hashes() {
 
     // Observed run: sample every 10 ticks, full observer pipeline.
     let mut watched = Simulation::with_rules(&config(), bonding_rules());
-    let mut tracker = StructureTracker::new(3);
+    let mut tracker = StructureTracker::new(ObserverConfig {
+        persist_after: 3,
+        ..ObserverConfig::default()
+    });
     let mut samples = 0;
     for i in 1..=120u32 {
         watched.tick();
@@ -90,7 +93,10 @@ fn observer_on_or_off_identical_state_hashes() {
 fn observer_output_is_deterministic_for_the_same_run() {
     let observe = || {
         let mut sim = Simulation::with_rules(&config(), bonding_rules());
-        let mut tracker = StructureTracker::new(3);
+        let mut tracker = StructureTracker::new(ObserverConfig {
+            persist_after: 3,
+            ..ObserverConfig::default()
+        });
         let mut trace = Vec::new();
         for i in 1..=100u32 {
             sim.tick();

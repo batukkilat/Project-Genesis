@@ -5,6 +5,6 @@ edition.workspace = true
 
 [dependencies]
 genesis-sim = { workspace = true }
-
-[dev-dependencies]
 genesis-config = { workspace = true }
+serde = { workspace = true }
+ron = { workspace = true }

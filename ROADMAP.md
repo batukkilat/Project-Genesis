@@ -150,8 +150,11 @@ Progress: design draft in docs/research/observer-design.md (2026-07-08).
 **Step 1 landed 2026-07-08**: `genesis-observer` crate (the CLI's analysis
 module, promoted) — read-only by construction, with the on/off
 replay-compatibility test proving observation changes no simulated bit.
-Next: overlap-threshold config + stable structure ids, metrics v1,
-hypotheses v1, timeline recording (landing order in the design doc).
+**Step 2 landed 2026-07-08**: configurable overlap threshold + stable
+observer-side structure ids (`ObserverConfig`, RON, never replay
+identity; ids never reused), exposed via `genesis run --observer`.
+Next: metrics v1, hypotheses v1, timeline recording (landing order in
+the design doc).
 
 Deliverables:
 

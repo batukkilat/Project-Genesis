@@ -585,6 +585,8 @@ version = "0.3.0"
 dependencies = [
  "genesis-config",
  "genesis-sim",
+ "ron",
+ "serde",
 ]
 
 [[package]]

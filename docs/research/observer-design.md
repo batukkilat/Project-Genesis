@@ -19,6 +19,10 @@ overlap (half-of-the-larger rule, deterministic tie-breaking).
 `genesis run --report N` prints it. Phase 5 starts by promoting this
 into a real crate. **Step 1 landed 2026-07-08**: the module is now the
 `genesis-observer` crate, with the on/off replay-compatibility test.
+**Step 2 (F3) landed 2026-07-08**: `ObserverConfig` (RON, validated,
+explicitly not replay identity) carries the overlap threshold and
+persistence age; tracked structures carry stable observer ids (start at
+1, never reused); `genesis run --observer <path>` wires it up.
 
 ## F1 — Crate boundary and the read-only guarantee
 

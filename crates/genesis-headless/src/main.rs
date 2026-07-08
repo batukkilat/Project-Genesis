@@ -51,6 +51,11 @@ enum Command {
         /// totals. Diagnostics never affect the simulation.
         #[arg(long)]
         report: Option<u64>,
+        /// RON observer config (overlap threshold, persistence age).
+        /// Deliberately NOT part of replay identity: the Observer cannot
+        /// affect the simulation. Defaults are used when omitted.
+        #[arg(long)]
+        observer: Option<PathBuf>,
         /// Worker threads (0 = all cores). Never changes results.
         #[arg(long, default_value_t = 0)]
         threads: usize,
@@ -158,6 +163,7 @@ fn run(cli: Cli) -> Result<ExitCode, Box<dyn std::error::Error>> {
             save,
             hash_every,
             report,
+            observer,
             threads,
         } => {
             init_thread_pool(threads)?;
@@ -182,10 +188,12 @@ fn run(cli: Cli) -> Result<ExitCode, Box<dyn std::error::Error>> {
                 ),
             };
 
-            // A structure counts as persistent once it has survived
-            // PERSIST_AFTER consecutive report samples.
-            const PERSIST_AFTER: u32 = 5;
-            let mut tracker = genesis_observer::StructureTracker::new(PERSIST_AFTER);
+            let observer_config = match &observer {
+                Some(p) => genesis_observer::ObserverConfig::load(p)?,
+                None => genesis_observer::ObserverConfig::default(),
+            };
+            let persist_after = observer_config.persist_after;
+            let mut tracker = genesis_observer::StructureTracker::new(observer_config);
 
             let start = Instant::now();
             for i in 1..=ticks {
@@ -210,7 +218,7 @@ fn run(cli: Cli) -> Result<ExitCode, Box<dyn std::error::Error>> {
                     let track = tracker.observe(&comps);
                     println!(
                         "tick {:>10}  n {:>7}  bonds {:>6}  comps {:>5} (largest {:>4}, \
-                         in-multi {:>6})  persist>={PERSIST_AFTER} {:>4} (oldest {:>3})  \
+                         in-multi {:>6})  persist>={persist_after} {:>4} (oldest {:>3})  \
                          M {:.3}  E {:.3}  I {:.3}",
                         stats.tick,
                         stats.particles,
