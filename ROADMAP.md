@@ -101,6 +101,27 @@ across thread counts and save/resume; the ~10M baseline is in BASELINES.md.
 Forks ratified in the decisions log (Q-2026-07-07-A). Known follow-up: the
 per-tick `canonicalize` sort is unskipped and bounds the speedup (BASELINES.md).
 
+**Environment fields shipped 2026-07-08** (Q-2026-07-08-A, save formats v9/v10):
+generic indexed scalar fields on their own coarse torus grid, built from init
+specs (`Uniform`, `GradientX/Y`); rules gate on them via `env_cond` at the
+initiator's env cell. Zero fields / env-free rules keep every pre-env replay
+identity bit-for-bit (verified against prior builds). Content:
+`configs/env-gradient.ron` + `packs/bands.ron`; a sim test proves bonded
+structures concentrate where the environment allows.
+
+**Player action stream shipped 2026-07-08** (Q-2026-07-08-B, save format v11):
+tick-stamped `FieldSet`/`FieldAdd` records over world-coordinate regions,
+drained at the start of their stamped tick; pending actions hash into replay
+identity, applied actions are already state. `genesis run/verify --actions`
+runs scripted experiments headless; `scripts/terraform-west.ron` on the
+gradient world is the exit criterion executable — verified DETERMINISTIC over
+3000 ticks across fresh/resume/thread-count, with a test showing the scripted
+edit redirects where structures emerge. **Both exit criteria now pass.**
+Remaining Phase 4 work: field dynamics (diffusion/decay/sources — parked as a
+later item in the env design doc), the remaining player verbs as their systems
+land (rotation, magnetic field, tectonics, asteroids), and chunk streaming /
+persistence for planets exceeding memory.
+
 Deliverables:
 
 - Planet-scale environment fields: temperature, pressure, gravity, radiation, atmosphere composition — sampled by chunks, influencing interaction conditions.
