@@ -166,6 +166,13 @@ pub struct TrackedStructure {
     pub members: Vec<u64>,
     /// Number of consecutive samples this component has been observed in.
     pub age: u32,
+    /// Membership stability vs the previous sample: `1 - churn` where
+    /// churn is `|C Δ C'| / |C ∪ C'|`, which reduces to the Jaccard
+    /// similarity `|C ∩ C'| / |C ∪ C'|`. 1.0 means frozen membership; the
+    /// overlap threshold bounds how low it can go for a continued
+    /// structure. A newly seen structure is 1.0 by convention (no change
+    /// has been observed yet).
+    pub stability: f64,
 }
 
 /// Summary of one tracker observation.
@@ -245,23 +252,29 @@ impl StructureTracker {
                 let larger = comp.len().max(self.tracked[i].members.len());
                 !claimed[i] && shared as f64 >= self.config.overlap as f64 * larger as f64
             });
-            let (id, age) = match matched {
-                Some((i, _)) => {
+            let (id, age, stability) = match matched {
+                Some((i, shared)) => {
                     claimed[i] = true;
                     continued += 1;
-                    (self.tracked[i].id, self.tracked[i].age + 1)
+                    let union = comp.len() + self.tracked[i].members.len() - shared;
+                    (
+                        self.tracked[i].id,
+                        self.tracked[i].age + 1,
+                        shared as f64 / union as f64,
+                    )
                 }
                 None => {
                     born += 1;
                     let id = self.next_id;
                     self.next_id += 1;
-                    (id, 1)
+                    (id, 1, 1.0)
                 }
             };
             next.push(TrackedStructure {
                 id,
                 members: comp.clone(),
                 age,
+                stability,
             });
         }
 
@@ -279,6 +292,93 @@ impl StructureTracker {
                 .count(),
         }
     }
+}
+
+/// Per-structure metrics for one sample (design doc F4). Values are facts
+/// about the bond graph and quantities — interpretation (hypotheses) is a
+/// separate, confidence-scored layer.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct StructureMetrics {
+    /// The structure's stable observer id.
+    pub id: u64,
+    /// Member count this sample.
+    pub size: usize,
+    /// Consecutive samples survived since first seen (age).
+    pub persistence: u32,
+    /// `1 - churn` vs the previous sample; see [`TrackedStructure::stability`].
+    pub stability: f64,
+    /// `ln(size) + degree_entropy + ln(1 + mean_degree)`: a size term, a
+    /// heterogeneity term (Shannon entropy of the member bond-degree
+    /// distribution, nats — varied roles rank above uniform ones), and a
+    /// connectivity term. A chain, a ring, and a dense blob of equal size
+    /// rank distinctly: the ring loses the entropy term (all degrees equal),
+    /// the blob wins the connectivity term.
+    pub complexity: f64,
+    /// Total information currently held by members — does the structure
+    /// hold signal, or leak it? (Trend over its lifetime lives in the
+    /// timeline, not here.)
+    pub information: f64,
+}
+
+/// Compute metrics for every structure live in the tracker, in the
+/// tracker's canonical order. Deterministic: all sums run over sorted
+/// member lists, never hash-map iteration order.
+pub fn structure_metrics(
+    snap: &WorldSnapshot,
+    tracker: &StructureTracker,
+) -> Vec<StructureMetrics> {
+    // Lookup-only maps; iteration below follows canonical member order.
+    let mut info: HashMap<u64, f64> = HashMap::with_capacity(snap.particles.len());
+    for p in &snap.particles {
+        info.insert(p.id, p.information as f64);
+    }
+    let mut degree: HashMap<u64, u32> = HashMap::new();
+    for b in &snap.bonds {
+        *degree.entry(b.a).or_default() += 1;
+        *degree.entry(b.b).or_default() += 1;
+    }
+
+    tracker
+        .structures()
+        .iter()
+        .map(|s| {
+            let n = s.members.len();
+            // Bonds never cross components, so the global degree of a member
+            // is its within-structure degree.
+            let mut degs: Vec<u32> = s
+                .members
+                .iter()
+                .map(|m| degree.get(m).copied().unwrap_or(0))
+                .collect();
+            degs.sort_unstable();
+            // Shannon entropy over the degree histogram, via run lengths of
+            // the sorted degrees (deterministic summation order).
+            let mut entropy = 0.0f64;
+            let mut i = 0;
+            while i < degs.len() {
+                let mut j = i;
+                while j < degs.len() && degs[j] == degs[i] {
+                    j += 1;
+                }
+                let p = (j - i) as f64 / n as f64;
+                entropy -= p * p.ln();
+                i = j;
+            }
+            let mean_degree = degs.iter().map(|&d| d as f64).sum::<f64>() / n as f64;
+            StructureMetrics {
+                id: s.id,
+                size: n,
+                persistence: s.age,
+                stability: s.stability,
+                complexity: (n as f64).ln() + entropy + (1.0 + mean_degree).ln(),
+                information: s
+                    .members
+                    .iter()
+                    .map(|m| info.get(m).copied().unwrap_or(0.0))
+                    .sum(),
+            }
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -511,6 +611,78 @@ mod tests {
             };
             assert!(c.validate().is_err(), "overlap {bad} must be rejected");
         }
+    }
+
+    #[test]
+    fn stability_is_jaccard_of_consecutive_memberships() {
+        let mut t = tracker(0.5, 2);
+        t.observe(&[vec![1, 2, 3, 4]]);
+        assert_eq!(t.structures()[0].stability, 1.0, "newborn convention");
+        // Loses 4, gains 9: shares 3, union 5 — stability 0.6.
+        t.observe(&[vec![1, 2, 3, 9]]);
+        assert_eq!(t.structures()[0].stability, 0.6);
+        // Frozen membership: back to 1.0.
+        t.observe(&[vec![1, 2, 3, 9]]);
+        assert_eq!(t.structures()[0].stability, 1.0);
+    }
+
+    /// Metrics for a single snapshot observed by a fresh default tracker.
+    fn metrics_of(bonds: &[(u64, u64)]) -> Vec<StructureMetrics> {
+        let s = snap(bonds);
+        let comps = bond_components(&s);
+        let mut t = tracker(0.5, 2);
+        t.observe(&comps);
+        structure_metrics(&s, &t)
+    }
+
+    #[test]
+    fn complexity_ranks_chain_ring_blob_distinctly() {
+        // Same size, different shape — the design doc requires these to
+        // rank differently.
+        let chain = metrics_of(&[(1, 2), (2, 3), (3, 4), (4, 5), (5, 6)])[0];
+        let ring = metrics_of(&[(1, 2), (2, 3), (3, 4), (4, 5), (5, 6), (1, 6)])[0];
+        let blob = metrics_of(&[
+            (1, 2),
+            (1, 3),
+            (1, 4),
+            (1, 5),
+            (1, 6),
+            (2, 3),
+            (2, 4),
+            (2, 5),
+            (2, 6),
+            (3, 4),
+            (3, 5),
+            (3, 6),
+            (4, 5),
+            (4, 6),
+            (5, 6),
+        ])[0];
+        assert_eq!(chain.size, 6);
+        assert_eq!(ring.size, 6);
+        assert_eq!(blob.size, 6);
+        // The ring is the most uniform (zero degree entropy, low degree);
+        // the chain adds endpoint heterogeneity; the dense blob wins on
+        // connectivity.
+        assert!(ring.complexity < chain.complexity);
+        assert!(chain.complexity < blob.complexity);
+    }
+
+    #[test]
+    fn metrics_carry_identity_persistence_and_information() {
+        let s = snap(&[(1, 2), (2, 3), (7, 8)]);
+        let comps = bond_components(&s);
+        let mut t = tracker(0.5, 2);
+        t.observe(&comps);
+        t.observe(&comps);
+        let m = structure_metrics(&s, &t);
+        assert_eq!(m.len(), 2);
+        assert_eq!(m[0].id, t.structures()[0].id);
+        assert_eq!(m[0].persistence, 2);
+        assert_eq!(m[0].stability, 1.0);
+        // The snap builder gives every particle information 0.25.
+        assert_eq!(m[0].information, 0.75, "chain of three members");
+        assert_eq!(m[1].information, 0.5, "bonded pair");
     }
 
     #[test]

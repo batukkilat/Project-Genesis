@@ -60,12 +60,21 @@ Per tracked structure, per sample:
 - **persistence** — samples survived since first seen (age).
 - **stability** — 1 − churn, churn = `|C Δ C'| / |C ∪ C'|` between
   consecutive samples (0 = frozen membership, 1 = total turnover).
+  *Landed 2026-07-08*: algebraically this is the Jaccard similarity
+  `|C ∩ C'| / |C ∪ C'|`, computed from the shared-member count the
+  matcher already has; a newborn structure is 1.0 by convention.
 - **complexity** — size plus bond-degree entropy (a chain, a ring, and a
   blob of equal size must rank differently); exact formula is an
-  implementer fork.
+  implementer fork. *Fork settled on landing (2026-07-08,
+  Q-2026-07-08-D)*: `ln(size) + H(degree histogram, nats) +
+  ln(1 + mean_degree)`. The literal "size + degree entropy" fails this
+  section's own requirement — a ring and an equal-size dense blob both
+  have zero degree entropy and would tie; the connectivity term
+  separates them (ring < chain < blob for size 6, pinned by test).
 - **information retention** — total information held by members,
   tracked across the structure's lifetime (does it hold signal, or
-  leak it).
+  leak it). *Landed 2026-07-08*: the per-sample metric is the current
+  member total; lifetime trend belongs to the timeline (F6).
 - *adaptation* is **deferred**: it needs environment-correlation history
   (did membership shift track a field change?) — meaningful only after
   timeline recording exists.
