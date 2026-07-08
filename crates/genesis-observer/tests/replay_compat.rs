@@ -63,24 +63,27 @@ fn observer_on_or_off_identical_state_hashes() {
         bare.tick();
     }
 
-    // Observed run: sample every 10 ticks, full observer pipeline.
-    let mut watched = Simulation::with_rules(&config(), bonding_rules());
-    let mut tracker = StructureTracker::new(ObserverConfig {
+    // Observed run: sample every 10 ticks, full observer pipeline —
+    // components, stats, tracking, metrics, hypotheses, timeline.
+    let observer_config = ObserverConfig {
         persist_after: 3,
         ..ObserverConfig::default()
-    });
-    let mut samples = 0;
+    };
+    let mut watched = Simulation::with_rules(&config(), bonding_rules());
+    let mut tracker = StructureTracker::new(observer_config);
+    let mut timeline = genesis_observer::Timeline::new(observer_config);
     for i in 1..=120u32 {
         watched.tick();
         if i % 10 == 0 {
             let snap = watched.snapshot();
             let comps = genesis_observer::bond_components(&snap);
-            let _stats = genesis_observer::sample_stats(&snap, &comps);
+            let stats = genesis_observer::sample_stats(&snap, &comps);
             let _report = tracker.observe(&comps);
-            samples += 1;
+            let metrics = genesis_observer::structure_metrics(&snap, &tracker);
+            timeline.record(stats, metrics);
         }
     }
-    assert_eq!(samples, 12);
+    assert_eq!(timeline.samples().len(), 12);
 
     assert_eq!(
         bare.state_hash(),
@@ -92,21 +95,29 @@ fn observer_on_or_off_identical_state_hashes() {
 #[test]
 fn observer_output_is_deterministic_for_the_same_run() {
     let observe = || {
-        let mut sim = Simulation::with_rules(&config(), bonding_rules());
-        let mut tracker = StructureTracker::new(ObserverConfig {
+        let observer_config = ObserverConfig {
             persist_after: 3,
             ..ObserverConfig::default()
-        });
+        };
+        let mut sim = Simulation::with_rules(&config(), bonding_rules());
+        let mut tracker = StructureTracker::new(observer_config);
+        let mut timeline = genesis_observer::Timeline::new(observer_config);
         let mut trace = Vec::new();
         for i in 1..=100u32 {
             sim.tick();
             if i % 10 == 0 {
                 let snap = sim.snapshot();
                 let comps = genesis_observer::bond_components(&snap);
-                trace.push((comps.clone(), tracker.observe(&comps)));
+                let stats = genesis_observer::sample_stats(&snap, &comps);
+                let report = tracker.observe(&comps);
+                let metrics = genesis_observer::structure_metrics(&snap, &tracker);
+                timeline.record(stats, metrics);
+                trace.push((comps.clone(), report));
             }
         }
-        trace
+        // The whole timeline — metrics and hypotheses included — must be
+        // identical between passes, not just the component sets.
+        (trace, timeline.to_ron().expect("timeline serializes"))
     };
     assert_eq!(
         observe(),

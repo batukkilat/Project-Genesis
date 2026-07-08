@@ -40,6 +40,14 @@ pub struct ObserverConfig {
     /// Age in consecutive samples at which a structure counts as persistent
     /// in reports.
     pub persist_after: u32,
+    /// Samples of recent history each hypothesis examines. At least 2.
+    pub window: u32,
+    /// Minimum persistence (age in samples) before "possibly
+    /// self-maintaining" can be entertained.
+    pub self_maintaining_age: u32,
+    /// Per-sample stability that must hold across the window for "possibly
+    /// self-maintaining". In [0, 1].
+    pub self_maintaining_stability: f64,
 }
 
 impl Default for ObserverConfig {
@@ -47,6 +55,9 @@ impl Default for ObserverConfig {
         ObserverConfig {
             overlap: 0.5,
             persist_after: 5,
+            window: 5,
+            self_maintaining_age: 10,
+            self_maintaining_stability: 0.75,
         }
     }
 }
@@ -65,6 +76,18 @@ impl ObserverConfig {
             return Err(ConfigError::Invalid(format!(
                 "observer overlap must be in (0, 1], got {}",
                 self.overlap
+            )));
+        }
+        if self.window < 2 {
+            return Err(ConfigError::Invalid(format!(
+                "observer window must be at least 2 samples, got {}",
+                self.window
+            )));
+        }
+        if !(self.self_maintaining_stability >= 0.0 && self.self_maintaining_stability <= 1.0) {
+            return Err(ConfigError::Invalid(format!(
+                "observer self_maintaining_stability must be in [0, 1], got {}",
+                self.self_maintaining_stability
             )));
         }
         Ok(())
@@ -121,7 +144,7 @@ pub fn bond_components(snap: &WorldSnapshot) -> Vec<Vec<u64>> {
 }
 
 /// Aggregate facts about one sampled snapshot.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct SampleStats {
     pub tick: u64,
     pub particles: usize,
@@ -297,7 +320,7 @@ impl StructureTracker {
 /// Per-structure metrics for one sample (design doc F4). Values are facts
 /// about the bond graph and quantities — interpretation (hypotheses) is a
 /// separate, confidence-scored layer.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct StructureMetrics {
     /// The structure's stable observer id.
     pub id: u64,
@@ -379,6 +402,163 @@ pub fn structure_metrics(
             }
         })
         .collect()
+}
+
+/// What a hypothesis claims about a structure. The Observer layer is exactly
+/// where such labels become permitted — always prefixed "possibly", always
+/// confidence-scored, never truth (constitution: hypotheses, not facts).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum HypothesisKind {
+    /// The structure outlives its members' tenure: persistence above
+    /// `self_maintaining_age` while per-sample stability stayed at or above
+    /// `self_maintaining_stability` across the window.
+    PossiblySelfMaintaining,
+    /// Monotonically non-decreasing size with a net increase across a full
+    /// window of presence.
+    PossiblyGrowing,
+}
+
+/// A confidence-scored claim about one tracked structure at one sample.
+/// Only positive findings are recorded — absence of a hypothesis means
+/// "nothing to report", not "refuted".
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct Hypothesis {
+    /// Observer id of the structure the claim is about.
+    pub structure: u64,
+    pub kind: HypothesisKind,
+    /// In (0, 1]. A deterministic function of the metrics window — see
+    /// [`Timeline::record`] for the exact v1 formulas.
+    pub confidence: f64,
+}
+
+/// One record in the observer's history: everything observed at one sample.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TimelineSample {
+    pub tick: u64,
+    pub stats: SampleStats,
+    /// Per-structure metrics, in the tracker's canonical order.
+    pub structures: Vec<StructureMetrics>,
+    /// Positive hypotheses this sample, in structure order (self-maintaining
+    /// before growing for the same structure).
+    pub hypotheses: Vec<Hypothesis>,
+}
+
+/// The observer's in-memory history of a run (design doc F6): sample
+/// records appended in tick order, dumpable as RON for the Phase 7
+/// narrator. Not simulation state — never saved, never hashed.
+pub struct Timeline {
+    config: ObserverConfig,
+    samples: Vec<TimelineSample>,
+}
+
+impl Timeline {
+    pub fn new(config: ObserverConfig) -> Self {
+        Timeline {
+            config,
+            samples: Vec::new(),
+        }
+    }
+
+    pub fn samples(&self) -> &[TimelineSample] {
+        &self.samples
+    }
+
+    /// Append one sample and evaluate hypotheses v1 against the recent
+    /// window (design doc F5). Exact formulas:
+    ///
+    /// - **possibly self-maintaining**: requires `persistence >=
+    ///   self_maintaining_age` and every stability value in the window
+    ///   `>= self_maintaining_stability`. Confidence = `min(1,
+    ///   persistence / (2 * self_maintaining_age)) * min(window
+    ///   stabilities)` — an age ramp capped by the worst observed churn,
+    ///   so confidence rises with tenure and is dragged down by turnover.
+    /// - **possibly growing**: requires presence in all `window` most
+    ///   recent samples with non-decreasing size and a net increase.
+    ///   Confidence = strictly-increasing steps / (window - 1).
+    ///
+    /// Both are deterministic functions of recorded metrics; a structure
+    /// absent from history windows simply yields no hypothesis.
+    pub fn record(
+        &mut self,
+        stats: SampleStats,
+        structures: Vec<StructureMetrics>,
+    ) -> &TimelineSample {
+        // validate() enforces window >= 2; clamp anyway so an unvalidated
+        // config degrades to the minimum window instead of underflowing.
+        let window = (self.config.window as usize).max(2);
+        // Per-structure (size, stability) lookups for the previous
+        // window-1 samples, newest first. Lookup only — iteration below
+        // follows the canonical structure order of the new sample.
+        let history: Vec<HashMap<u64, (usize, f64)>> = self
+            .samples
+            .iter()
+            .rev()
+            .take(window - 1)
+            .map(|s| {
+                s.structures
+                    .iter()
+                    .map(|m| (m.id, (m.size, m.stability)))
+                    .collect()
+            })
+            .collect();
+
+        let mut hypotheses = Vec::new();
+        for m in &structures {
+            // Walk back while the structure stays present, gathering up to
+            // `window` values (this sample plus history), oldest last.
+            let mut sizes = vec![m.size];
+            let mut min_stability = m.stability;
+            for h in &history {
+                match h.get(&m.id) {
+                    Some(&(size, stability)) => {
+                        sizes.push(size);
+                        min_stability = min_stability.min(stability);
+                    }
+                    None => break,
+                }
+            }
+
+            if m.persistence >= self.config.self_maintaining_age
+                && sizes.len() == window
+                && min_stability >= self.config.self_maintaining_stability
+            {
+                let ramp = (m.persistence as f64 / (2.0 * self.config.self_maintaining_age as f64))
+                    .min(1.0);
+                hypotheses.push(Hypothesis {
+                    structure: m.id,
+                    kind: HypothesisKind::PossiblySelfMaintaining,
+                    confidence: ramp * min_stability,
+                });
+            }
+
+            // sizes is newest-first; growth reads oldest-to-newest.
+            if sizes.len() == window {
+                let non_decreasing = sizes.windows(2).all(|w| w[1] <= w[0]);
+                let strict = sizes.windows(2).filter(|w| w[1] < w[0]).count();
+                if non_decreasing && strict > 0 {
+                    hypotheses.push(Hypothesis {
+                        structure: m.id,
+                        kind: HypothesisKind::PossiblyGrowing,
+                        confidence: strict as f64 / (window - 1) as f64,
+                    });
+                }
+            }
+        }
+
+        self.samples.push(TimelineSample {
+            tick: stats.tick,
+            stats,
+            structures,
+            hypotheses,
+        });
+        self.samples.last().expect("just pushed")
+    }
+
+    /// Dump the whole timeline as pretty RON — the narrator's input format.
+    pub fn to_ron(&self) -> Result<String, ConfigError> {
+        ron::ser::to_string_pretty(&self.samples, ron::ser::PrettyConfig::default())
+            .map_err(|e| ConfigError::Parse(e.to_string()))
+    }
 }
 
 #[cfg(test)]
@@ -477,6 +657,7 @@ mod tests {
         StructureTracker::new(ObserverConfig {
             overlap,
             persist_after,
+            ..ObserverConfig::default()
         })
     }
 
@@ -685,11 +866,164 @@ mod tests {
         assert_eq!(m[1].information, 0.5, "bonded pair");
     }
 
+    /// Minimal aggregate stats for timeline tests.
+    fn stats(tick: u64) -> SampleStats {
+        SampleStats {
+            tick,
+            particles: 0,
+            bonds: 0,
+            components: 0,
+            largest_component: 0,
+            in_multi: 0,
+            total_matter: 0.0,
+            total_energy: 0.0,
+            total_information: 0.0,
+        }
+    }
+
+    /// Metrics row for a structure; complexity/information are irrelevant
+    /// to hypothesis evaluation.
+    fn row(id: u64, size: usize, persistence: u32, stability: f64) -> StructureMetrics {
+        StructureMetrics {
+            id,
+            size,
+            persistence,
+            stability,
+            complexity: 0.0,
+            information: 0.0,
+        }
+    }
+
+    #[test]
+    fn self_maintaining_needs_age_and_windowed_stability() {
+        let mut tl = Timeline::new(ObserverConfig::default()); // window 5, age 10, stab 0.75
+        for i in 1..=9u32 {
+            let s = tl.record(stats(i as u64), vec![row(1, 4, i, 1.0)]);
+            assert!(
+                s.hypotheses.is_empty(),
+                "no hypothesis before the age threshold (sample {i})"
+            );
+        }
+        let s = tl.record(stats(10), vec![row(1, 4, 10, 1.0)]);
+        assert_eq!(
+            s.hypotheses,
+            vec![Hypothesis {
+                structure: 1,
+                kind: HypothesisKind::PossiblySelfMaintaining,
+                confidence: 0.5, // age ramp 10/(2*10), perfect stability
+            }]
+        );
+        // Confidence keeps rising with tenure, capped by the ramp at 1.0.
+        for i in 11..=20u32 {
+            tl.record(stats(i as u64), vec![row(1, 4, i, 1.0)]);
+        }
+        let last = tl.samples().last().unwrap();
+        assert_eq!(last.hypotheses[0].confidence, 1.0);
+    }
+
+    #[test]
+    fn self_maintaining_rejected_by_one_unstable_sample_in_window() {
+        let mut tl = Timeline::new(ObserverConfig::default());
+        for i in 1..=11u32 {
+            // One churny sample (stability 0.6 < 0.75) inside the window.
+            let stab = if i == 9 { 0.6 } else { 1.0 };
+            tl.record(stats(i as u64), vec![row(1, 4, i, stab)]);
+        }
+        let flagged: Vec<_> = tl
+            .samples()
+            .last()
+            .unwrap()
+            .hypotheses
+            .iter()
+            .filter(|h| h.kind == HypothesisKind::PossiblySelfMaintaining)
+            .collect();
+        assert!(
+            flagged.is_empty(),
+            "stability must hold across the whole window"
+        );
+    }
+
+    #[test]
+    fn growing_scores_strict_steps_over_the_window() {
+        let mut tl = Timeline::new(ObserverConfig::default()); // window 5
+        // Strictly growing sizes: 2,3,4,5,6.
+        for (i, size) in [2usize, 3, 4, 5, 6].iter().enumerate() {
+            tl.record(stats(i as u64), vec![row(1, *size, i as u32 + 1, 1.0)]);
+        }
+        let s = tl.samples().last().unwrap();
+        assert_eq!(
+            s.hypotheses,
+            vec![Hypothesis {
+                structure: 1,
+                kind: HypothesisKind::PossiblyGrowing,
+                confidence: 1.0,
+            }]
+        );
+        // Plateaus dilute confidence: 6,6,7,7,8 has 2 strict steps of 4.
+        let mut tl2 = Timeline::new(ObserverConfig::default());
+        for (i, size) in [6usize, 6, 7, 7, 8].iter().enumerate() {
+            tl2.record(stats(i as u64), vec![row(1, *size, i as u32 + 1, 1.0)]);
+        }
+        assert_eq!(tl2.samples().last().unwrap().hypotheses[0].confidence, 0.5);
+        // Any shrink kills the hypothesis.
+        let mut tl3 = Timeline::new(ObserverConfig::default());
+        for (i, size) in [2usize, 3, 4, 3, 5].iter().enumerate() {
+            tl3.record(stats(i as u64), vec![row(1, *size, i as u32 + 1, 1.0)]);
+        }
+        assert!(tl3.samples().last().unwrap().hypotheses.is_empty());
+    }
+
+    #[test]
+    fn hypotheses_need_a_full_window_of_presence() {
+        let mut tl = Timeline::new(ObserverConfig::default());
+        // Present for only 3 of the last 5 samples (absent, then reborn with
+        // high persistence — as if the timeline attached late).
+        tl.record(stats(1), vec![]);
+        tl.record(stats(2), vec![]);
+        for i in 3..=5u64 {
+            tl.record(stats(i), vec![row(1, i as usize, 20, 1.0)]);
+        }
+        assert!(tl.samples().last().unwrap().hypotheses.is_empty());
+    }
+
+    #[test]
+    fn timeline_dump_roundtrips_through_ron() {
+        let mut tl = Timeline::new(ObserverConfig::default());
+        for (i, size) in [2usize, 3, 4, 5, 6].iter().enumerate() {
+            tl.record(stats(i as u64), vec![row(1, *size, i as u32 + 1, 0.9)]);
+        }
+        let text = tl.to_ron().unwrap();
+        let back: Vec<TimelineSample> = ron::from_str(&text).unwrap();
+        assert_eq!(back, tl.samples());
+    }
+
+    #[test]
+    fn config_rejects_bad_hypothesis_params() {
+        let c = ObserverConfig {
+            window: 1,
+            ..ObserverConfig::default()
+        };
+        assert!(c.validate().is_err(), "window below 2 must be rejected");
+        for bad in [-0.1, 1.1, f64::NAN] {
+            let c = ObserverConfig {
+                self_maintaining_stability: bad,
+                ..ObserverConfig::default()
+            };
+            assert!(
+                c.validate().is_err(),
+                "stability bound {bad} must be rejected"
+            );
+        }
+    }
+
     #[test]
     fn config_ron_roundtrip_and_partial_defaults() {
         let c = ObserverConfig {
             overlap: 0.7,
             persist_after: 9,
+            window: 4,
+            self_maintaining_age: 12,
+            self_maintaining_stability: 0.8,
         };
         let text = ron::ser::to_string(&c).unwrap();
         let back: ObserverConfig = ron::from_str(&text).unwrap();

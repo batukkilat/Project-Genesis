@@ -51,11 +51,17 @@ enum Command {
         /// totals. Diagnostics never affect the simulation.
         #[arg(long)]
         report: Option<u64>,
-        /// RON observer config (overlap threshold, persistence age).
-        /// Deliberately NOT part of replay identity: the Observer cannot
-        /// affect the simulation. Defaults are used when omitted.
+        /// RON observer config (overlap threshold, persistence age,
+        /// hypothesis thresholds). Deliberately NOT part of replay identity:
+        /// the Observer cannot affect the simulation. Defaults are used when
+        /// omitted.
         #[arg(long)]
         observer: Option<PathBuf>,
+        /// Write the observer timeline (per-sample stats, structure metrics,
+        /// hypotheses) as RON to this file at the end of the run. Samples
+        /// are taken on the --report cadence.
+        #[arg(long, requires = "report")]
+        timeline: Option<PathBuf>,
         /// Worker threads (0 = all cores). Never changes results.
         #[arg(long, default_value_t = 0)]
         threads: usize,
@@ -164,6 +170,7 @@ fn run(cli: Cli) -> Result<ExitCode, Box<dyn std::error::Error>> {
             hash_every,
             report,
             observer,
+            timeline,
             threads,
         } => {
             init_thread_pool(threads)?;
@@ -194,6 +201,7 @@ fn run(cli: Cli) -> Result<ExitCode, Box<dyn std::error::Error>> {
             };
             let persist_after = observer_config.persist_after;
             let mut tracker = genesis_observer::StructureTracker::new(observer_config);
+            let mut history = genesis_observer::Timeline::new(observer_config);
 
             let start = Instant::now();
             for i in 1..=ticks {
@@ -216,10 +224,22 @@ fn run(cli: Cli) -> Result<ExitCode, Box<dyn std::error::Error>> {
                     let comps = genesis_observer::bond_components(&snap);
                     let stats = genesis_observer::sample_stats(&snap, &comps);
                     let track = tracker.observe(&comps);
+                    let metrics = genesis_observer::structure_metrics(&snap, &tracker);
+                    let sample = history.record(stats, metrics);
+                    let (self_maint, growing) =
+                        sample
+                            .hypotheses
+                            .iter()
+                            .fold((0usize, 0usize), |(s, g), h| match h.kind {
+                                genesis_observer::HypothesisKind::PossiblySelfMaintaining => {
+                                    (s + 1, g)
+                                }
+                                genesis_observer::HypothesisKind::PossiblyGrowing => (s, g + 1),
+                            });
                     println!(
                         "tick {:>10}  n {:>7}  bonds {:>6}  comps {:>5} (largest {:>4}, \
                          in-multi {:>6})  persist>={persist_after} {:>4} (oldest {:>3})  \
-                         M {:.3}  E {:.3}  I {:.3}",
+                         hyp self-maint {:>3} grow {:>3}  M {:.3}  E {:.3}  I {:.3}",
                         stats.tick,
                         stats.particles,
                         stats.bonds,
@@ -228,6 +248,8 @@ fn run(cli: Cli) -> Result<ExitCode, Box<dyn std::error::Error>> {
                         stats.in_multi,
                         track.persistent,
                         track.oldest_age,
+                        self_maint,
+                        growing,
                         stats.total_matter,
                         stats.total_energy,
                         stats.total_information,
@@ -246,6 +268,14 @@ fn run(cli: Cli) -> Result<ExitCode, Box<dyn std::error::Error>> {
             if let Some(path) = save {
                 genesis_persist::save_to_file(&sim.snapshot(), &path)?;
                 println!("saved to     {}", path.display());
+            }
+            if let Some(path) = timeline {
+                std::fs::write(&path, history.to_ron()?)?;
+                println!(
+                    "timeline     {} ({} samples)",
+                    path.display(),
+                    history.samples().len()
+                );
             }
             Ok(ExitCode::SUCCESS)
         }

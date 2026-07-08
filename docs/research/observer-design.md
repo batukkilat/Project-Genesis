@@ -94,6 +94,20 @@ deterministically. v1 ships exactly two:
   tenure).
 - **"possibly growing"** — monotonic size trend over a window.
 
+*Landed 2026-07-08 (Q-2026-07-08-E)*, exact v1 formulas (all thresholds
+in `ObserverConfig`; only positive findings are recorded — absence
+means "nothing to report", never "refuted"):
+
+- self-maintaining: requires `persistence >= self_maintaining_age`
+  (default 10 samples) and per-sample stability `>=
+  self_maintaining_stability` (default 0.75) across the whole `window`
+  (default 5). Confidence = `min(1, persistence /
+  (2·self_maintaining_age)) · min(window stabilities)` — an age ramp
+  capped by the worst observed churn.
+- growing: requires presence in all `window` most recent samples,
+  non-decreasing size, and a net increase. Confidence =
+  strictly-increasing steps / (window − 1), so plateaus dilute it.
+
 Life / intelligence / civilization / awareness labels wait for metrics
 that could honestly move their confidence (self-*replication* needs
 structure-signature similarity search; awareness needs player-action
@@ -105,6 +119,12 @@ Per run, the observer appends sample records (tick, structures, metrics,
 hypotheses) to an in-memory timeline, dumpable as RON/JSON for the
 Phase 7 narrator. No save-format involvement — observer output is not
 simulation state.
+
+*Landed 2026-07-08*: `Timeline` records `TimelineSample { tick, stats,
+structures, hypotheses }` per observation; `Timeline::to_ron()` is the
+dump; `genesis run --report N --timeline <path>` writes it. Member
+lists are deliberately NOT in the timeline (metrics reference stable
+observer ids) — the narrator needs the story, not the roster.
 
 ## Landing order
 
