@@ -112,7 +112,11 @@ torus seam duplication, tier thresholds, aggregate math, mapping edges.
 4. **Time controls + player actions.** pause/1×/warp presets with
    target-vs-achieved display; first env tool (field brush) emitting
    `PlayerAction`s through the exact scripted-action path — the UI is just
-   another script author (Q-2026-07-08-B: one representation).
+   another script author (Q-2026-07-08-B: one representation). *Logic half
+   landed 2026-07-09* (`pacer` module): `WarpPacer` turns measured frame
+   time + a tick budget into a whole-tick `FramePlan` with a starvation
+   flag for the honesty display; fractional-tick carry, no catch-up
+   bursts, wall clock never enters the sim.
 5. **Observer panel + inspector,** panel-only annotations (owner decision
    2026-07-08). Save/load/branch UI last.
 
