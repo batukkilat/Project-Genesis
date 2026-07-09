@@ -1,0 +1,8 @@
+// Linear grayscale for debug overlays: reads as raw values, no palette
+// bias. Data, never replay identity.
+(
+    stops: [
+        (0, 0, 0),
+        (255, 255, 255),
+    ],
+)

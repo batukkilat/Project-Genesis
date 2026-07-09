@@ -78,9 +78,13 @@ data, following visuals.md tiers:
   brightness from energy, hue from information) + bond segments (T0 only).
   Torus-aware: a camera rect crossing the seam yields duplicated instances
   at wrapped positions.
-- **T2/T3:** per-cell aggregates (count, mean energy, mean information)
-  over the camera rect from the canonical layout (`cell_start` makes this
-  one linear pass), plus env-field values underneath (T3).
+- **T2/T3:** per-cell aggregates (count, mean energy, mean information),
+  plus env-field values underneath (T3). *As landed:* aggregation covers
+  the whole world every frame, not just the camera rect — one linear pass
+  over the store is exactly the v1 extraction budget this plan accepts,
+  and the raster layer crops via its world-rect sampling. Rect-scoped
+  aggregation (walking `cell_start` for visible cells only) is a
+  profiling-driven refinement, not a correctness change.
 - Mappings (quantity → radius/brightness/hue, palettes) are RON data files,
   hot-swappable, never replay identity (visuals.md principle 4).
 
@@ -100,7 +104,11 @@ torus seam duplication, tier thresholds, aggregate math, mapping edges.
    soft-dot texture. Debug overlays first (visuals.md: they de-risk the
    mapping pipeline before aesthetics).
 3. **Heatmap tiers + pixel look.** T2/T3 textures from aggregates,
-   low-res offscreen target + integer upscale + dither.
+   low-res offscreen target + integer upscale + dither. *Logic half landed
+   2026-07-09* (`raster` module): RON palette ramps (`palettes/`),
+   aggregate→RGBA8 rasterization with torus-wrapped world-rect sampling
+   and 4×4 Bayer ordered dithering — the Bevy half only uploads the buffer
+   and upscales.
 4. **Time controls + player actions.** pause/1×/warp presets with
    target-vs-achieved display; first env tool (field brush) emitting
    `PlayerAction`s through the exact scripted-action path — the UI is just

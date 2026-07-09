@@ -1,0 +1,10 @@
+// Default heatmap ramp: deep blue -> cyan -> yellow. Data, never replay
+// identity (docs/design/visuals.md principle 4) — swap freely.
+(
+    stops: [
+        (8, 12, 40),
+        (24, 96, 160),
+        (72, 200, 208),
+        (248, 232, 96),
+    ],
+)

@@ -11,6 +11,8 @@
 //! out). Visual mappings are data files a player can swap; they are never
 //! replay identity (docs/design/visuals.md, principle 4).
 
+pub mod raster;
+
 use std::path::Path;
 
 use genesis_core::torus;
@@ -123,8 +125,36 @@ impl Default for VisualMapping {
 impl VisualMapping {
     pub fn load(path: &Path) -> Result<Self, String> {
         let text = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
-        ron::from_str(&text).map_err(|e| e.to_string())
+        let map: VisualMapping = ron::from_str(&text).map_err(|e| e.to_string())?;
+        map.validate()?;
+        Ok(map)
     }
+
+    /// Mappings are player-swappable data: a bad file must fail at load,
+    /// not poison `SpriteInstance`'s documented ranges downstream.
+    pub fn validate(&self) -> Result<(), String> {
+        for (name, v, signed) in [
+            ("radius_scale", self.radius_scale, false),
+            ("brightness_scale", self.brightness_scale, false),
+            ("hue_scale", self.hue_scale, true),
+            ("bond_alpha_scale", self.bond_alpha_scale, false),
+        ] {
+            if !v.is_finite() {
+                return Err(format!("{name} must be finite, got {v}"));
+            }
+            if !signed && v < 0.0 {
+                return Err(format!("{name} must be >= 0, got {v}"));
+            }
+        }
+        Ok(())
+    }
+}
+
+/// Wrap into [0, 1) with the same guard as `torus::wrap`: f32 `rem_euclid`
+/// can round a tiny negative up to exactly the modulus.
+fn wrap_unit(x: f32) -> f32 {
+    let h = x.rem_euclid(1.0);
+    if h >= 1.0 || h.is_nan() { 0.0 } else { h }
 }
 
 /// Pick the zoom tier from particles per screen pixel, assuming uniform
@@ -136,7 +166,7 @@ pub fn tier_for(snap: &WorldSnapshot, cam: &Camera, screen_w: u32, screen_h: u32
     let density =
         snap.particles.len() as f32 / (snap.world_width as f64 * snap.world_height as f64) as f32;
     let visible = density * view_w * view_h;
-    let pixels = (screen_w.max(1) * screen_h.max(1)) as f32;
+    let pixels = (screen_w.max(1) as u64 * screen_h.max(1) as u64) as f32;
     let per_pixel = visible / pixels;
     if view_w >= snap.world_width && view_h >= snap.world_height {
         Tier::T3Planet
@@ -191,6 +221,17 @@ pub fn extract(
     }
 }
 
+/// Integer multiples k of `period` for which the interval
+/// `[lo + k·period, hi + k·period]` intersects `[-half, half]`. For a view
+/// smaller than the world this is `0..=0` or empty; a view wider than the
+/// world on an axis tiles wrapped copies across it (render-bootstrap.md:
+/// duplicated instances at wrapped positions).
+fn tile_range(lo: f32, hi: f32, period: f32, half: f32) -> std::ops::RangeInclusive<i32> {
+    let k_lo = ((-half - hi) / period).ceil() as i32;
+    let k_hi = ((half - lo) / period).floor() as i32;
+    k_lo..=k_hi
+}
+
 fn extract_sprites(
     snap: &WorldSnapshot,
     cam: &Camera,
@@ -198,27 +239,29 @@ fn extract_sprites(
     screen_h: u32,
     map: &VisualMapping,
 ) -> Vec<SpriteInstance> {
-    let half_w = 0.5 * cam.width.min(snap.world_width);
-    let half_h = 0.5 * view_height(cam, screen_w, screen_h).min(snap.world_height);
+    let half_w = 0.5 * cam.width;
+    let half_h = 0.5 * view_height(cam, screen_w, screen_h);
     let cx = torus::wrap(cam.center_x, snap.world_width);
     let cy = torus::wrap(cam.center_y, snap.world_height);
-    snap.particles
-        .iter()
-        .filter_map(|p| {
-            let dx = torus::delta(cx, p.pos_x, snap.world_width);
-            let dy = torus::delta(cy, p.pos_y, snap.world_height);
-            if dx.abs() > half_w || dy.abs() > half_h {
-                return None;
+    let mut out = Vec::new();
+    for p in &snap.particles {
+        let dx = torus::delta(cx, p.pos_x, snap.world_width);
+        let dy = torus::delta(cy, p.pos_y, snap.world_height);
+        let radius = p.matter.max(0.0).sqrt() * map.radius_scale;
+        // Cull with a radius margin so a big sprite doesn't pop at the edge.
+        for kx in tile_range(dx, dx, snap.world_width, half_w + radius) {
+            for ky in tile_range(dy, dy, snap.world_height, half_h + radius) {
+                out.push(SpriteInstance {
+                    x: dx + kx as f32 * snap.world_width,
+                    y: dy + ky as f32 * snap.world_height,
+                    radius,
+                    brightness: (p.energy * map.brightness_scale).clamp(0.0, 1.0),
+                    hue: wrap_unit(p.information * map.hue_scale),
+                });
             }
-            Some(SpriteInstance {
-                x: dx,
-                y: dy,
-                radius: p.matter.max(0.0).sqrt() * map.radius_scale,
-                brightness: (p.energy * map.brightness_scale).clamp(0.0, 1.0),
-                hue: (p.information * map.hue_scale).rem_euclid(1.0),
-            })
-        })
-        .collect()
+        }
+    }
+    out
 }
 
 fn extract_bonds(
@@ -231,8 +274,8 @@ fn extract_bonds(
     if snap.bonds.is_empty() {
         return Vec::new();
     }
-    let half_w = 0.5 * cam.width.min(snap.world_width);
-    let half_h = 0.5 * view_height(cam, screen_w, screen_h).min(snap.world_height);
+    let half_w = 0.5 * cam.width;
+    let half_h = 0.5 * view_height(cam, screen_w, screen_h);
     let cx = torus::wrap(cam.center_x, snap.world_width);
     let cy = torus::wrap(cam.center_y, snap.world_height);
     // Particles are sorted by id (snapshot invariant): binary-search lookup.
@@ -242,36 +285,41 @@ fn extract_bonds(
             .ok()
             .map(|i| (snap.particles[i].pos_x, snap.particles[i].pos_y))
     };
-    snap.bonds
-        .iter()
-        .filter_map(|b| {
-            let (ax, ay) = pos_of(b.a)?;
-            let (bx, by) = pos_of(b.b)?;
-            let (dax, day) = (
-                torus::delta(cx, ax, snap.world_width),
-                torus::delta(cy, ay, snap.world_height),
-            );
-            let a_visible = dax.abs() <= half_w && day.abs() <= half_h;
-            // Draw the partner at its torus-shortest offset from endpoint A,
-            // not from the camera — a bond crossing the seam then renders as
-            // the short segment it physically is.
-            let (dbx, dby) = (
-                dax + torus::delta(ax, bx, snap.world_width),
-                day + torus::delta(ay, by, snap.world_height),
-            );
-            let b_visible = dbx.abs() <= half_w && dby.abs() <= half_h;
-            if !a_visible && !b_visible {
-                return None;
+    let mut out = Vec::new();
+    for b in &snap.bonds {
+        let (Some((ax, ay)), Some((bx, by))) = (pos_of(b.a), pos_of(b.b)) else {
+            continue;
+        };
+        let (dax, day) = (
+            torus::delta(cx, ax, snap.world_width),
+            torus::delta(cy, ay, snap.world_height),
+        );
+        // Draw the partner at its torus-shortest offset from endpoint A,
+        // not from the camera — a bond crossing the seam then renders as
+        // the short segment it physically is. Tiling below re-emits the
+        // segment wherever a wrapped copy of either endpoint is visible,
+        // so bond copies land exactly on sprite copies.
+        let (dbx, dby) = (
+            dax + torus::delta(ax, bx, snap.world_width),
+            day + torus::delta(ay, by, snap.world_height),
+        );
+        let alpha = (b.strength * map.bond_alpha_scale).clamp(0.0, 1.0);
+        // Cull by segment bounding box, not endpoint containment — a bond
+        // longer than the view must still draw while crossing it.
+        for kx in tile_range(dax.min(dbx), dax.max(dbx), snap.world_width, half_w) {
+            for ky in tile_range(day.min(dby), day.max(dby), snap.world_height, half_h) {
+                let (ox, oy) = (kx as f32 * snap.world_width, ky as f32 * snap.world_height);
+                out.push(BondLine {
+                    x0: dax + ox,
+                    y0: day + oy,
+                    x1: dbx + ox,
+                    y1: dby + oy,
+                    alpha,
+                });
             }
-            Some(BondLine {
-                x0: dax,
-                y0: day,
-                x1: dbx,
-                y1: dby,
-                alpha: (b.strength * map.bond_alpha_scale).clamp(0.0, 1.0),
-            })
-        })
-        .collect()
+        }
+    }
+    out
 }
 
 /// One linear pass over the snapshot onto the sim's uniform grid — the grid
@@ -473,6 +521,164 @@ mod tests {
             b.x1
         );
         assert_eq!(b.alpha, 0.5, "strength 2 * default 0.25");
+    }
+
+    #[test]
+    fn corner_camera_sees_all_four_quadrant_neighbors() {
+        // Camera on the (0,0) corner of a 100-world: particles just inside
+        // each of the four wrapped quadrants must all land near the origin
+        // in camera space.
+        let s = snap(
+            100.0,
+            vec![
+                particle(0, 2.0, 3.0, 1.0, 0.0, 0.0),
+                particle(1, 98.0, 3.0, 1.0, 0.0, 0.0),
+                particle(2, 2.0, 97.0, 1.0, 0.0, 0.0),
+                particle(3, 98.0, 97.0, 1.0, 0.0, 0.0),
+            ],
+            vec![],
+        );
+        let cam = Camera {
+            center_x: 0.0,
+            center_y: 0.0,
+            width: 20.0,
+        };
+        let f = extract(&s, &cam, 100, 100, &VisualMapping::default());
+        assert_eq!(f.sprites.len(), 4, "all four corner neighbors visible");
+        let mut pts: Vec<(f32, f32)> = f.sprites.iter().map(|sp| (sp.x, sp.y)).collect();
+        pts.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        assert_eq!(
+            pts,
+            vec![(-2.0, -3.0), (-2.0, 3.0), (2.0, -3.0), (2.0, 3.0)]
+        );
+    }
+
+    #[test]
+    fn wider_than_world_view_tiles_wrapped_copies() {
+        // Camera 300 wide over a 100-world: one particle must appear three
+        // times, one world apart — never blank bands (render-bootstrap.md).
+        let s = snap(100.0, vec![particle(0, 10.0, 50.0, 1.0, 0.0, 0.0)], vec![]);
+        let cam = Camera {
+            center_x: 50.0,
+            center_y: 50.0,
+            width: 300.0,
+        };
+        // 300x100 view on a 3:1 screen keeps view_h = 100 (T3 needs both
+        // axes >= world; force sprites by keeping density tiny).
+        let f = extract(&s, &cam, 300, 100, &VisualMapping::default());
+        assert_eq!(f.tier, Tier::T3Planet, "whole world on screen is planet");
+        // Drop to a sprite tier explicitly to test the tiling math.
+        let sprites = extract_sprites(&s, &cam, 300, 100, &VisualMapping::default());
+        let mut xs: Vec<f32> = sprites.iter().map(|sp| sp.x).collect();
+        xs.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        assert_eq!(xs, vec![-140.0, -40.0, 60.0], "copies one world apart");
+    }
+
+    #[test]
+    fn bond_longer_than_the_view_still_draws_while_crossing_it() {
+        // Extreme zoom: view is 2 wide, bond endpoints at camera-space
+        // -1.5 and +1.5 — both outside, segment spans the screen.
+        let s = snap(
+            100.0,
+            vec![
+                particle(0, 48.5, 50.0, 1.0, 0.0, 0.0),
+                particle(1, 51.5, 50.0, 1.0, 0.0, 0.0),
+            ],
+            vec![BondSnap {
+                a: 0,
+                b: 1,
+                strength: 1.0,
+            }],
+        );
+        let cam = Camera {
+            center_x: 50.0,
+            center_y: 50.0,
+            width: 2.0,
+        };
+        let bonds = extract_bonds(&s, &cam, 100, 100, &VisualMapping::default());
+        assert_eq!(bonds.len(), 1, "crossing bond must not be culled");
+        assert_eq!((bonds[0].x0, bonds[0].x1), (-1.5, 1.5));
+    }
+
+    #[test]
+    fn near_world_view_bond_copies_land_on_sprite_copies() {
+        // The wide-view consistency case: with tiling, every emitted bond
+        // endpoint coincides with some emitted sprite position.
+        let s = snap(
+            100.0,
+            vec![
+                particle(0, 45.0, 50.0, 1.0, 0.0, 0.0),
+                particle(1, 55.0, 50.0, 1.0, 0.0, 0.0),
+            ],
+            vec![BondSnap {
+                a: 0,
+                b: 1,
+                strength: 1.0,
+            }],
+        );
+        let cam = Camera {
+            center_x: 0.0,
+            center_y: 50.0,
+            width: 96.0,
+        };
+        let map = VisualMapping::default();
+        let sprites = extract_sprites(&s, &cam, 96, 20, &map);
+        let bonds = extract_bonds(&s, &cam, 96, 20, &map);
+        assert!(!bonds.is_empty());
+        // Every bond endpoint that is on screen must have a sprite copy
+        // under it (off-screen endpoints are rightly sprite-culled).
+        let half_w = 48.0;
+        let mut checked = 0;
+        for b in &bonds {
+            for ex in [b.x0, b.x1] {
+                if ex.abs() <= half_w {
+                    checked += 1;
+                    assert!(
+                        sprites.iter().any(|sp| (sp.x - ex).abs() < 1e-3),
+                        "visible bond endpoint x={ex} has no sprite under it: {sprites:?}"
+                    );
+                }
+            }
+        }
+        assert!(checked > 0, "test must actually check visible endpoints");
+    }
+
+    #[test]
+    fn mapping_validation_rejects_bad_scales() {
+        let mut m = VisualMapping::default();
+        assert!(m.validate().is_ok());
+        m.radius_scale = -1.0;
+        assert!(m.validate().is_err(), "negative radius scale");
+        m.radius_scale = 1.0;
+        m.brightness_scale = f32::NAN;
+        assert!(m.validate().is_err(), "NaN brightness scale");
+        m.brightness_scale = 1.0;
+        m.hue_scale = f32::INFINITY;
+        assert!(m.validate().is_err(), "infinite hue scale");
+        // Negative hue scale is a legal artistic choice (reversed ramp).
+        m.hue_scale = -1.0;
+        assert!(m.validate().is_ok());
+    }
+
+    #[test]
+    fn hue_stays_in_unit_range_at_the_wrap_edge() {
+        // f32 rem_euclid rounds tiny negatives to exactly 1.0 — the same
+        // edge torus::wrap guards. Reversed ramps hit it via negative scale.
+        assert_eq!(wrap_unit(-1e-8), 0.0);
+        assert_eq!(wrap_unit(0.25), 0.25);
+        assert_eq!(wrap_unit(f32::NAN), 0.0);
+        let s = snap(100.0, vec![particle(0, 50.0, 50.0, 1.0, 0.0, 1e-8)], vec![]);
+        let cam = Camera {
+            center_x: 50.0,
+            center_y: 50.0,
+            width: 20.0,
+        };
+        let map = VisualMapping {
+            hue_scale: -1.0,
+            ..VisualMapping::default()
+        };
+        let f = extract(&s, &cam, 100, 100, &map);
+        assert!(f.sprites[0].hue < 1.0, "hue must stay in [0, 1)");
     }
 
     #[test]
