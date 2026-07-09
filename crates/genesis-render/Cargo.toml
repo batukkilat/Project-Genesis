@@ -1,0 +1,14 @@
+[package]
+name = "genesis-render"
+version.workspace = true
+edition.workspace = true
+
+# Step 1 of docs/research/render-bootstrap.md: the extraction core only —
+# pure functions from snapshot state to plain RenderFrame data, fully
+# headless. Bevy (window, GPU, sprites) arrives with step 2 and must never
+# be needed to build or test this layer.
+[dependencies]
+genesis-core = { workspace = true }
+genesis-sim = { workspace = true }
+serde = { workspace = true }
+ron = { workspace = true }

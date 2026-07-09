@@ -1,7 +1,8 @@
 # Renderer bootstrap — Phase 6 landing plan
 
 Status: decision recorded in the ROADMAP decisions log (Q-2026-07-09-B);
-implementation lands in the staged order below. Companion to
+implementation lands in the staged order below. **Step 1 landed
+2026-07-09** (`genesis-render`, extraction core, Bevy-free, headless-tested). Companion to
 docs/design/visuals.md (the look) and docs/design/ui.md (the chrome) —
 this file is the architecture: how pixels get fed without touching the
 simulation.

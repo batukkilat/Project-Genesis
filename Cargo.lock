@@ -600,6 +600,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "genesis-render"
+version = "0.3.0"
+dependencies = [
+ "genesis-core",
+ "genesis-sim",
+ "ron",
+ "serde",
+]
+
+[[package]]
 name = "genesis-sim"
 version = "0.3.0"
 dependencies = [

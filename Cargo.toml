@@ -6,6 +6,7 @@ members = [
     "crates/genesis-config",
     "crates/genesis-persist",
     "crates/genesis-observer",
+    "crates/genesis-render",
     "crates/genesis-headless",
 ]
 
@@ -19,6 +20,7 @@ genesis-sim = { path = "crates/genesis-sim" }
 genesis-config = { path = "crates/genesis-config" }
 genesis-persist = { path = "crates/genesis-persist" }
 genesis-observer = { path = "crates/genesis-observer" }
+genesis-render = { path = "crates/genesis-render" }
 
 bevy_ecs = "0.19"
 rayon = "1"

@@ -203,9 +203,14 @@ answers open design question 4) — lockstep with a `RenderFrame` extraction
 seam; full landing order in docs/research/render-bootstrap.md. Design
 groundwork already parked: docs/design/visuals.md (quantity→visual mapping,
 LOD tiers T0–T3), docs/design/ui.md (WorldBox-shaped chrome, owner-settled
-2026-07-08). First implementation step is the headless-testable extraction
-core (`genesis-render` step 1); window/GPU work needs a machine with a
-display.
+2026-07-08). **Step 1 (extraction core) landed 2026-07-09**: `genesis-render`
+crate (deliberately Bevy-free until step 2) — tier selection by particles
+per pixel, T0/T1 camera-space sprite extraction (torus-seam correct by
+construction), T0 bond segments (seam bonds render as the short segment),
+T2/T3 cell aggregation, RON `VisualMapping` loader (never replay identity).
+Read-only at the type level; fully unit-tested headless. Next: step 2 (Bevy
+app shell) needs a machine with a display for runtime verification —
+autonomous cloud sessions stop at the testable boundary.
 
 Deliverables:
 
