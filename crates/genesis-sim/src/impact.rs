@@ -9,13 +9,15 @@
 //! the payload quantities plus the shock energy, which tests account for.
 //!
 //! Determinism:
-//! - The shock walks particles in store index order but writes only
-//!   per-particle slots from values independent of that order (each
-//!   particle's own distance to the impact point) — order cannot matter.
-//!   The energy deposit normalizes by the falloff-weight total, an
-//!   order-dependent f32 sum only in principle: the walk order is the
-//!   canonical layout, itself a pure function of state, so the sum is
-//!   reproducible bit-for-bit across runs, saves, and thread counts.
+//! - The shock writes only per-particle slots from values independent of
+//!   walk order (each particle's own distance to the impact point). The
+//!   one order-sensitive value — the falloff-weight total the energy
+//!   deposit normalizes by — is summed in particle-id order, because the
+//!   store layout at drain time is NOT a pure function of state: an
+//!   uninterrupted run drains on the previous tick's canonical layout,
+//!   a resumed run on the snapshot's id-sorted layout. Id order is the
+//!   ordering both share, so a save taken on the impact's own tick
+//!   resumes bit-for-bit (regression-tested).
 //! - The payload draws from a stream derived as
 //!   `derive(stream_seed, [IMPACT_STREAM, tick, queue_index])`: order-free,
 //!   collision-free with interaction streams (distinct leading tag), and
@@ -58,28 +60,37 @@ pub fn apply(
     let y = torus::wrap(y, geom.world_h);
 
     // --- Shock: radial momentum impulse + energy deposit, linear falloff.
-    // Two passes: the deposit needs the falloff-weight total first.
+    // Gather hits first: the deposit normalizes by the falloff-weight
+    // total, an f32 sum whose bits depend on summation order — and store
+    // index order is NOT a pure function of state at drain time (an
+    // uninterrupted run drains on the previous tick's canonical layout, a
+    // resumed run on the snapshot's id-sorted layout). Summing in id order
+    // makes the total identical across both, so a save taken on the impact
+    // tick resumes bit-for-bit.
     let n = store.len();
-    let mut weight_total = 0.0f32;
+    let mut hits: Vec<(u64, usize, f32, f32, f32)> = Vec::new();
     for i in 0..n {
-        if let Some((w, _, _)) = shock_weight(store, geom, i, x, y, radius) {
-            weight_total += w;
+        if let Some((w, dx, dy)) = shock_weight(store, geom, i, x, y, radius) {
+            hits.push((store.id[i], i, w, dx, dy));
         }
     }
+    hits.sort_unstable_by_key(|&(id, ..)| id);
+    let weight_total: f32 = hits.iter().map(|&(_, _, w, ..)| w).sum();
+    // Membership is positive falloff weight (shock_weight), so any hit
+    // implies a positive total: the declared energy deposits in full
+    // whenever someone is struck, and is lost entirely otherwise.
     if weight_total > 0.0 {
-        for i in 0..n {
-            if let Some((w, dx, dy)) = shock_weight(store, geom, i, x, y, radius) {
-                // Radially outward unit direction; a particle exactly at the
-                // point has no direction and takes no impulse (weight 1, so
-                // it still receives its energy share).
-                let d = (dx * dx + dy * dy).sqrt();
-                if d > 0.0 {
-                    let dv = impulse * w / store.matter[i];
-                    store.vx[i] += dv * dx / d;
-                    store.vy[i] += dv * dy / d;
-                }
-                store.energy[i] += energy * w / weight_total;
+        for &(_, i, w, dx, dy) in &hits {
+            // Radially outward unit direction; a particle exactly at the
+            // point has no direction and takes no impulse (weight 1, so
+            // it still receives its energy share).
+            let d = (dx * dx + dy * dy).sqrt();
+            if d > 0.0 {
+                let dv = impulse * w / store.matter[i];
+                store.vx[i] += dv * dx / d;
+                store.vy[i] += dv * dy / d;
             }
+            store.energy[i] += energy * w / weight_total;
         }
     }
 
@@ -110,7 +121,11 @@ pub fn apply(
 }
 
 /// Falloff weight and torus delta of particle `i` relative to the impact
-/// point, or `None` outside the radius. Weight is `1 - d/radius` in (0, 1].
+/// point, or `None` when not struck. Weight is `1 - d/radius`, and being
+/// struck is defined as having positive weight — near the rim, f32
+/// rounding can put `d/radius` at exactly 1.0 for `d² < radius²`, and a
+/// zero-weight "hit" would let a lone rim particle zero the weight total
+/// and silently drop the whole energy deposit.
 #[inline]
 fn shock_weight(
     store: &ParticleStore,
@@ -129,6 +144,9 @@ fn shock_weight(
         return None;
     }
     let w = 1.0 - d2.sqrt() / radius;
+    if w <= 0.0 {
+        return None;
+    }
     Some((w, dx, dy))
 }
 
@@ -323,6 +341,68 @@ mod tests {
             make(0),
             make(1),
             "same-tick impacts must draw independent streams"
+        );
+    }
+
+    #[test]
+    fn shock_is_bitwise_identical_across_store_layouts() {
+        // The drain-time layout differs between an uninterrupted run
+        // (canonical order) and a fresh resume (id-sorted order); the shock
+        // must produce identical bits on both. Many particles with distinct
+        // weights make an order-dependent weight sum diverge in low bits.
+        let geom = GridGeom::new(100.0, 100.0, 10.0);
+        let particles: Vec<(u64, f32, f32)> = (0..37)
+            .map(|k| {
+                (
+                    k,
+                    30.0 + (k as f32 * 1.37) % 40.0,
+                    30.0 + (k as f32 * 2.11) % 40.0,
+                )
+            })
+            .collect();
+        let run = |order: &[usize]| {
+            let mut s = ParticleStore::default();
+            for &idx in order {
+                let (id, px, py) = particles[idx];
+                s.push(id, px, py, 0.0, 0.0, 1.0 + id as f32 * 0.1, 1.0, 0.0);
+            }
+            let mut next_id = 64;
+            apply(
+                &mut s,
+                &geom,
+                50.0,
+                50.0,
+                30.0,
+                4.0,
+                17.0,
+                &payload(0),
+                7,
+                3,
+                0,
+                &mut next_id,
+            );
+            let mut out: Vec<(u64, u32, u32, u32)> = (0..s.len())
+                .map(|i| {
+                    (
+                        s.id[i],
+                        s.energy[i].to_bits(),
+                        s.vx[i].to_bits(),
+                        s.vy[i].to_bits(),
+                    )
+                })
+                .collect();
+            out.sort_unstable_by_key(|&(id, ..)| id);
+            out
+        };
+        let forward: Vec<usize> = (0..particles.len()).collect();
+        let mut shuffled = forward.clone();
+        shuffled.reverse();
+        shuffled.swap(3, 20);
+        shuffled.swap(7, 29);
+        assert_eq!(
+            run(&forward),
+            run(&shuffled),
+            "shock results must not depend on store layout order"
         );
     }
 

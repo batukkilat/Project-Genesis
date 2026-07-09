@@ -1659,6 +1659,57 @@ mod tests {
     }
 
     #[test]
+    fn impact_on_the_save_tick_resumes_bit_identically() {
+        // Regression (2026-07-09 night review): a save taken at the impact's
+        // own tick drains it on the snapshot's id-sorted layout, while the
+        // uninterrupted run drains on the previous tick's canonical layout.
+        // The energy deposit normalizes by an f32 weight sum, so a
+        // layout-order-dependent sum diverges bitwise; impact::apply must
+        // sum in id order. The wide radius guarantees many in-radius
+        // particles with distinct weights.
+        let wide_impact = |tick: u64| {
+            let mut a = impact_action(tick, 128.0, 128.0, 25);
+            if let genesis_config::ActionKind::Impact { radius, energy, .. } = &mut a.action {
+                *radius = 100.0;
+                *energy = 40.0;
+            }
+            a
+        };
+        let make = || {
+            Simulation::with_rules_and_actions(
+                &test_config(),
+                bonding_rules(),
+                script(vec![wide_impact(40)]),
+            )
+        };
+        let mut a = make();
+        let mut b = make();
+        for _ in 0..40 {
+            a.tick();
+            b.tick();
+        }
+        let snap = b.snapshot();
+        assert_eq!(
+            snap.pending_actions.len(),
+            1,
+            "the impact fires at the start of tick 40's step, so a save at \
+             tick-count 40 must still carry it"
+        );
+        let mut resumed = Simulation::from_snapshot(&snap);
+        drop(b);
+        for _ in 0..20 {
+            a.tick();
+            resumed.tick();
+        }
+        assert_eq!(
+            a.state_hash(),
+            resumed.state_hash(),
+            "impact stamped for the save tick diverged on resume — the shock \
+             weight sum must not depend on store layout order"
+        );
+    }
+
+    #[test]
     fn pending_impact_is_replay_identity() {
         // Two runs with identical state but different queued impacts have
         // different futures, so they must hash apart from tick 0 — and from
