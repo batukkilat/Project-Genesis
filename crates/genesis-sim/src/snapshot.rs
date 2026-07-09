@@ -150,25 +150,59 @@ impl WorldSnapshot {
             h.write_u64(self.pending_actions.len() as u64);
             for a in &self.pending_actions {
                 h.write_u64(a.tick);
-                let (code, field, region, amount) = match a.action {
+                match a.action {
                     ActionKind::FieldSet {
                         field,
                         region,
                         value,
-                    } => (0u64, field, region, value),
-                    ActionKind::FieldAdd {
+                    }
+                    | ActionKind::FieldAdd {
                         field,
                         region,
-                        delta,
-                    } => (1u64, field, region, delta),
-                };
-                h.write_u64(code);
-                h.write_u64(field as u64);
-                h.write_f32(region.x0);
-                h.write_f32(region.y0);
-                h.write_f32(region.x1);
-                h.write_f32(region.y1);
-                h.write_f32(amount);
+                        delta: value,
+                    } => {
+                        let code = match a.action {
+                            ActionKind::FieldSet { .. } => 0u64,
+                            _ => 1u64,
+                        };
+                        h.write_u64(code);
+                        h.write_u64(field as u64);
+                        h.write_f32(region.x0);
+                        h.write_f32(region.y0);
+                        h.write_f32(region.x1);
+                        h.write_f32(region.y1);
+                        h.write_f32(value);
+                    }
+                    // A pending impact is a different future, exactly like a
+                    // pending field edit; every parameter shapes the outcome,
+                    // so every parameter hashes.
+                    ActionKind::Impact {
+                        x,
+                        y,
+                        radius,
+                        impulse,
+                        energy,
+                        payload,
+                    } => {
+                        h.write_u64(2);
+                        h.write_f32(x);
+                        h.write_f32(y);
+                        h.write_f32(radius);
+                        h.write_f32(impulse);
+                        h.write_f32(energy);
+                        h.write_u64(payload.count as u64);
+                        for r in [
+                            payload.matter,
+                            payload.energy,
+                            payload.information,
+                            payload.speed,
+                        ] {
+                            h.write_f32(r.lo);
+                            h.write_f32(r.hi);
+                        }
+                        h.write_f32(payload.spread);
+                    }
+                }
             }
         }
         h.write_u64(self.rules.len() as u64);

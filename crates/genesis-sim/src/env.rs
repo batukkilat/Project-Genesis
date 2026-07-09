@@ -175,6 +175,9 @@ impl EnvFields {
                 region,
                 delta,
             } => self.edit(field, &region, |v| v + delta),
+            genesis_config::ActionKind::Impact { .. } => {
+                unreachable!("impacts touch particles, not env fields — routed in the drain")
+            }
         }
     }
 

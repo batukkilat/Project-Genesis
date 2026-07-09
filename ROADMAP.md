@@ -28,6 +28,7 @@ Settled — do not re-litigate without cause:
 - **UI direction (2026-07-08, owner):** WorldBox-style top-down pixel god-sandbox is the confirmed genre shape for Phase 6, with the constitutional differences (environment-only tools, no labels below the Observer, timeline branching). **Observer annotations are panel-only** — never drawn on world objects; selecting a hypothesis may move the camera but renders nothing on the structure. Design parked in docs/design/ui.md (companion to visuals.md).
 - **Observer hypotheses v1 + timeline (2026-07-08, Q-2026-07-08-E, ratifies the F5/F6 details in docs/research/observer-design.md):** exactly two confidence-scored hypotheses, evaluated deterministically over the metrics window, positives-only (absence = "nothing to report", never "refuted"): **possibly self-maintaining** (persistence ≥ `self_maintaining_age` with per-sample stability ≥ threshold across the window; confidence = age ramp `min(1, persistence/2·age_min)` × min window stability) and **possibly growing** (full-window presence, non-decreasing size, net increase; confidence = strict steps / (window−1)). Life/intelligence/civilization labels stay unshipped until metrics could honestly move them. The timeline records (tick, stats, metrics, hypotheses) per sample — member lists deliberately excluded (stable observer ids are the reference) — dumped as RON via `genesis run --timeline`; never saved, never hashed.
 - **Observer metrics v1 (2026-07-08, Q-2026-07-08-D, ratifies the F4 fork in docs/research/observer-design.md):** per-structure metrics are pure graph/quantity facts computed per sample: persistence = age in samples; stability = Jaccard similarity of consecutive memberships (`1 − churn`, newborn = 1.0); **complexity = `ln(size) + degree-entropy + ln(1 + mean_degree)`** — the doc's literal "size + degree entropy" would tie a ring with an equal-size dense blob (both zero entropy), so a connectivity term is added; information retention = current member information total (lifetime trend is timeline work, F6). Observer config and metrics are never replay identity — the Observer cannot affect the simulation. Adaptation metric deferred until timeline recording exists.
+- **Asteroid impact action (2026-07-09, Q-2026-07-09-A, implements the 2026-07-06 asteroid decision):** `ActionKind::Impact` joins the player-action vocabulary (save format v13). An impact at a world point is (a) a **momentum shock**: particles within `radius` (torus metric) take a radially-outward velocity impulse with linear falloff, divided by their matter (`dv = impulse·(1−d/r)/m`; a particle exactly at the point takes none); (b) an **energy shock**: the declared total splits across in-radius particles proportionally to falloff weight — deposited in full when anyone is in radius, entirely lost when nobody is; and (c) a **particle payload**: `count` particles drawn uniformly from declared matter/energy/information/speed ranges (quantity space, never a named substance — the 2026-07-06 rule), spawned on a spread disc and ejected radially, ids from the normal sequence. Payload RNG is the order-free stream `derive(stream_seed, [IMPACT_TAG, tick, queue_index])`, so same-tick impacts draw independently and script/resume/UI deliveries are identical. Replay identity follows Q-2026-07-08-B exactly: pending impacts hash (every parameter), applied impacts are already state. **Injection is deliberate**: matter/energy arrive from outside the world (external material, 2026-07-06) and tests pin the injection to exactly the declared payload + shock. Shipped example: `scripts/bombardment.ron`.
 - **Information overflow cap (2026-07-06, answers Q-2026-07-06-B: Option A, information-only):** clamp information into `[0, information_max]` at interaction commit. `information_max` is a physics param in replay identity (save format bump); default 1e30 — far above any meaningful signal, far below f32 overflow in transfer arithmetic. Matter and energy are conserved by construction and stay uncapped. Amplifying packs saturate instead of detonating to NaN. **Shipped 2026-07-06 (save format v7):** `information_max` is a validated `PhysicsParams` field (finite, > 0, default 1e30), hashed into replay identity; the clamp is applied to both touched particles at interaction commit, and to emitted children at birth. Verified deterministic (fresh/resume/thread-count) on physics-only, sandbox, and hoarders packs.
 
 ## Phase 1 — Foundation (done, v0.1.0)
@@ -129,12 +130,18 @@ relaxation toward a rest value, both default-off; params in replay identity
 only when active. The full stack — dynamic field + env-gated rules + action
 script — verifies DETERMINISTIC over 3000 ticks.
 
+**Asteroid impacts shipped 2026-07-09** (Q-2026-07-09-A, save format v13):
+`ActionKind::Impact` — momentum + energy shock with linear falloff plus a
+particle payload drawn from quantity ranges, replay-recorded like every
+player action; pending impacts hash, applied ones are state. Injection is
+exactly the declared payload + shock (tested); `scripts/bombardment.ron`
+verifies DETERMINISTIC across fresh/resume/thread-count.
+
 Remaining Phase 4 work: the remaining player verbs as their systems land
-(rotation, magnetic field, tectonics, asteroids), and chunk streaming —
-scoped and **deliberately deferred** until an out-of-memory scale target
-exists (docs/research/chunk-streaming.md; the recorded `canonicalize`
-incremental-sort follow-up comes first). Phase 5 may begin: this phase's
-exit criteria pass.
+(rotation, magnetic field, tectonics), and chunk streaming — scoped and
+**deliberately deferred** until an out-of-memory scale target exists
+(docs/research/chunk-streaming.md). Phase 5 may begin: this phase's exit
+criteria pass.
 
 Deliverables:
 

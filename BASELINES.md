@@ -37,11 +37,13 @@ Notes:
   (9 SoA arrays) is skipped, not just the sort.
 - **Tick counts, previously unrecorded:** three of the four 2026-07-07
   hashes reproduce exactly at `--ticks 40` — that is what those rows ran.
-  The 10M LOD-off hash `0x4fdf0260daa242ea` is not a T=40 hash; most
-  plausibly that (slowest) row alone used the default `--ticks 120`. A
-  reproduction run is in flight and its result will be recorded here.
+  The 10M LOD-off hash `0x4fdf0260daa242ea` reproduces at **neither** 40
+  nor 120 ticks (T=120 measured 2026-07-09: hash `0xaeb53bd97f6558ca`,
+  1.43e6 particle-ticks/s — throughput parity with the recorded 1.42e6);
+  that row's tick count is unrecoverable and its hash should not be used
+  as a reference. The three reproduced rows are the cross-build anchor.
   Lesson: the state hash depends on the tick count, so baseline rows must
-  state it — this session lost an hour rediscovering that.
+  state it — this session lost over an hour rediscovering that.
 
 ## Phase 4 (2026-07-07) — adaptive detail (LOD), ~10M baseline
 

@@ -11,7 +11,7 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
-use crate::ConfigError;
+use crate::{ConfigError, Range};
 
 /// Axis-aligned region in world coordinates: `x0 <= x < x1`, `y0 <= y < y1`,
 /// clamped to the world. An env cell is affected iff its center falls inside.
@@ -45,11 +45,30 @@ impl RegionSpec {
     }
 }
 
+/// Particle payload delivered by an asteroid impact (decisions log,
+/// 2026-07-06): external material specified as *quantity ranges* — a region
+/// of quantity space, never a named substance. Names/labels live above the
+/// engine, in the Observer/UI layers.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+pub struct PayloadSpec {
+    /// Number of particles delivered.
+    pub count: u32,
+    /// Quantity ranges each payload particle draws from, uniformly.
+    pub matter: Range,
+    pub energy: Range,
+    pub information: Range,
+    /// Ejection speed range; direction is radially outward from the impact
+    /// point (uniform angle for a particle spawned exactly at the point).
+    pub speed: Range,
+    /// Payload particles spawn uniformly on a disc of this radius around the
+    /// impact point (0 = all at the point).
+    pub spread: f32,
+}
+
 /// The player verbs. Environment-only, per the constitution (rule 4): the
-/// vocabulary grows (rotation, tectonics, asteroid impacts) as the systems
-/// they act on land — each as its own decisions-log amendment. Time warp is
-/// deliberately absent: it cannot affect state and never enters replay
-/// identity.
+/// vocabulary grows (rotation, tectonics) as the systems they act on land —
+/// each as its own decisions-log amendment. Time warp is deliberately
+/// absent: it cannot affect state and never enters replay identity.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
 pub enum ActionKind {
     /// Set env field `field` to `value` in every cell whose center is inside
@@ -66,11 +85,31 @@ pub enum ActionKind {
         region: RegionSpec,
         delta: f32,
     },
+    /// Asteroid impact at `(x, y)` (Q-2026-07-09-A, shape settled
+    /// 2026-07-06): a momentum + energy shock to existing particles within
+    /// `radius` (torus metric, linear falloff), plus a particle `payload`.
+    /// Matter/energy arrive from outside the world by design — the exact
+    /// injection is the payload quantities plus `energy`.
+    Impact {
+        x: f32,
+        y: f32,
+        /// Shock radius; particles farther than this are untouched.
+        radius: f32,
+        /// Peak momentum impulse (at the impact point, falling linearly to 0
+        /// at `radius`), applied radially outward: dv = impulse * falloff /
+        /// matter.
+        impulse: f32,
+        /// Total energy deposited across in-radius particles, split
+        /// proportionally to falloff weight. Nothing is deposited when no
+        /// particle is in radius.
+        energy: f32,
+        payload: PayloadSpec,
+    },
 }
 
 impl ActionKind {
     fn validate(&self) -> Result<(), ConfigError> {
-        match self {
+        match *self {
             ActionKind::FieldSet { region, value, .. } => {
                 region.validate()?;
                 if !value.is_finite() {
@@ -87,6 +126,72 @@ impl ActionKind {
                     ));
                 }
             }
+            ActionKind::Impact {
+                x,
+                y,
+                radius,
+                impulse,
+                energy,
+                payload,
+            } => {
+                for (name, v) in [("x", x), ("y", y)] {
+                    if !v.is_finite() {
+                        return Err(ConfigError::Invalid(format!(
+                            "impact {name} must be finite"
+                        )));
+                    }
+                }
+                if !radius.is_finite() || radius <= 0.0 {
+                    return Err(ConfigError::Invalid(
+                        "impact radius must be finite and > 0".into(),
+                    ));
+                }
+                for (name, v) in [("impulse", impulse), ("energy", energy)] {
+                    if !v.is_finite() || v < 0.0 {
+                        return Err(ConfigError::Invalid(format!(
+                            "impact {name} must be finite and >= 0"
+                        )));
+                    }
+                }
+                payload.validate()?;
+            }
+        }
+        Ok(())
+    }
+}
+
+impl PayloadSpec {
+    fn validate(&self) -> Result<(), ConfigError> {
+        let ranges = [
+            ("matter", self.matter),
+            ("energy", self.energy),
+            ("information", self.information),
+            ("speed", self.speed),
+        ];
+        for (name, r) in ranges {
+            if !r.lo.is_finite() || !r.hi.is_finite() || r.lo > r.hi {
+                return Err(ConfigError::Invalid(format!(
+                    "payload {name} range must be finite and ordered: [{}, {})",
+                    r.lo, r.hi
+                )));
+            }
+            if r.lo < 0.0 {
+                return Err(ConfigError::Invalid(format!(
+                    "payload {name} range must be non-negative"
+                )));
+            }
+        }
+        // Physics divides by matter (dv = F/m), so payload particles need
+        // strictly positive mass — same constraint spawn config enforces.
+        if self.count > 0 && self.matter.lo <= 0.0 {
+            return Err(ConfigError::Invalid(
+                "payload matter range must be strictly positive".into(),
+            ));
+        }
+        if !self.spread.is_finite() || self.spread < 0.0 {
+            return Err(ConfigError::Invalid(
+                "payload spread must be finite and >= 0".into(),
+            ));
         }
         Ok(())
     }
@@ -229,6 +334,81 @@ mod tests {
             value: 1.0,
         };
         script.validate().unwrap();
+    }
+
+    fn impact(radius: f32, impulse: f32, energy: f32, matter_lo: f32) -> ActionKind {
+        ActionKind::Impact {
+            x: 10.0,
+            y: 20.0,
+            radius,
+            impulse,
+            energy,
+            payload: PayloadSpec {
+                count: 5,
+                matter: Range::new(matter_lo, 1.0),
+                energy: Range::new(0.0, 2.0),
+                information: Range::new(0.0, 0.0),
+                speed: Range::new(0.5, 1.5),
+                spread: 2.0,
+            },
+        }
+    }
+
+    #[test]
+    fn impact_parses_from_ron() {
+        let script: ActionScript = ron::from_str(
+            "(actions: [
+                (tick: 500, action: Impact(
+                    x: 128.0, y: 64.0, radius: 20.0, impulse: 5.0, energy: 100.0,
+                    payload: (count: 50,
+                        matter: (lo: 0.2, hi: 0.8), energy: (lo: 1.0, hi: 3.0),
+                        information: (lo: 0.0, hi: 0.0), speed: (lo: 0.5, hi: 2.0),
+                        spread: 5.0),
+                )),
+            ])",
+        )
+        .unwrap();
+        script.validate().unwrap();
+        match script.actions[0].action {
+            ActionKind::Impact {
+                radius, payload, ..
+            } => {
+                assert_eq!(radius, 20.0);
+                assert_eq!(payload.count, 50);
+            }
+            _ => panic!("wrong kind"),
+        }
+    }
+
+    #[test]
+    fn rejects_bad_impacts() {
+        let cases = [
+            impact(0.0, 1.0, 1.0, 0.1),           // zero radius
+            impact(10.0, -1.0, 1.0, 0.1),         // negative impulse
+            impact(10.0, 1.0, f32::NAN, 0.1),     // non-finite energy
+            impact(10.0, 1.0, 1.0, 0.0),          // zero-mass payload
+            impact(f32::INFINITY, 1.0, 1.0, 0.1), // non-finite radius
+        ];
+        for (i, action) in cases.into_iter().enumerate() {
+            let script = ActionScript {
+                actions: vec![PlayerAction { tick: 0, action }],
+            };
+            assert!(script.validate().is_err(), "case {i} must be rejected");
+        }
+        // A zero-count payload with a zero matter range is fine — it spawns
+        // nothing, so the mass constraint is vacuous.
+        let mut ok = impact(10.0, 1.0, 1.0, 0.0);
+        if let ActionKind::Impact { payload, .. } = &mut ok {
+            payload.count = 0;
+        }
+        ActionScript {
+            actions: vec![PlayerAction {
+                tick: 0,
+                action: ok,
+            }],
+        }
+        .validate()
+        .unwrap();
     }
 
     #[test]

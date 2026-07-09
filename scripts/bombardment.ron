@@ -1,0 +1,52 @@
+// Example asteroid bombardment (Q-2026-07-09-A; shape settled in the
+// decisions log 2026-07-06): an impact is a tick-stamped, replay-recorded
+// player action delivering a momentum + energy shock plus a particle
+// payload. The payload "material" is quantity ranges — a region of quantity
+// space, never a named substance; matter/energy arrive from outside the
+// world by design, and the injection is exactly what the action declares.
+//
+//   genesis run    --actions scripts/bombardment.ron
+//   genesis verify --actions scripts/bombardment.ron
+//
+// Two strikes: a heavy early impact seeding dense, energetic material into
+// the world's center, then a light glancing strike on the far side (its
+// payload arrives fast and diffuse). Works with any config — impacts
+// reference no env fields.
+(
+    actions: [
+        (
+            tick: 500,
+            action: Impact(
+                x: 2048.0, y: 2048.0,
+                radius: 64.0,
+                impulse: 4.0,
+                energy: 200.0,
+                payload: (
+                    count: 400,
+                    matter: (lo: 0.5, hi: 1.5),
+                    energy: (lo: 1.0, hi: 4.0),
+                    information: (lo: 0.0, hi: 0.0),
+                    speed: (lo: 0.1, hi: 0.8),
+                    spread: 24.0,
+                ),
+            ),
+        ),
+        (
+            tick: 1500,
+            action: Impact(
+                x: 512.0, y: 3584.0,
+                radius: 32.0,
+                impulse: 1.5,
+                energy: 40.0,
+                payload: (
+                    count: 120,
+                    matter: (lo: 0.1, hi: 0.4),
+                    energy: (lo: 0.5, hi: 1.5),
+                    information: (lo: 0.0, hi: 0.2),
+                    speed: (lo: 1.0, hi: 3.0),
+                    spread: 40.0,
+                ),
+            ),
+        ),
+    ],
+)

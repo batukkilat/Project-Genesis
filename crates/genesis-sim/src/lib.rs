@@ -11,6 +11,7 @@
 pub mod bonds;
 pub mod env;
 pub mod grid;
+pub mod impact;
 pub mod interact;
 pub mod lod;
 pub mod physics;
@@ -75,11 +76,47 @@ fn advance_tick(mut tick: ResMut<Tick>) {
 }
 
 /// Start-of-tick player-action drain: every action stamped for this tick
-/// edits the environment before anything simulates, in queue order.
-fn apply_player_actions(mut pending: ResMut<Pending>, mut env: ResMut<EnvFields>, tick: Res<Tick>) {
+/// applies before anything simulates, in queue order. Field edits touch env
+/// cells; impacts touch particles (shock + payload) — the pushed payload
+/// marks the store dirty, so the following canonicalize rebuilds the layout
+/// by full sort.
+#[allow(clippy::too_many_arguments)]
+fn apply_player_actions(
+    mut pending: ResMut<Pending>,
+    mut env: ResMut<EnvFields>,
+    mut store: ResMut<ParticleStore>,
+    mut next_id: ResMut<NextId>,
+    geom: Res<GridGeom>,
+    stream_seed: Res<StreamSeed>,
+    tick: Res<Tick>,
+) {
     let due = pending.0.iter().take_while(|a| a.tick == tick.0).count();
-    for a in pending.0.drain(..due) {
-        env.apply_action(&a.action);
+    for (k, a) in pending.0.drain(..due).enumerate() {
+        match a.action {
+            genesis_config::ActionKind::FieldSet { .. }
+            | genesis_config::ActionKind::FieldAdd { .. } => env.apply_action(&a.action),
+            genesis_config::ActionKind::Impact {
+                x,
+                y,
+                radius,
+                impulse,
+                energy,
+                payload,
+            } => impact::apply(
+                &mut store,
+                &geom,
+                x,
+                y,
+                radius,
+                impulse,
+                energy,
+                &payload,
+                stream_seed.0,
+                tick.0,
+                k as u64,
+                &mut next_id.0,
+            ),
+        }
     }
 }
 
@@ -298,14 +335,18 @@ impl Simulation {
                 tick.0
             );
             let field = match a.action {
-                genesis_config::ActionKind::FieldSet { field, .. } => field,
-                genesis_config::ActionKind::FieldAdd { field, .. } => field,
+                genesis_config::ActionKind::FieldSet { field, .. } => Some(field),
+                genesis_config::ActionKind::FieldAdd { field, .. } => Some(field),
+                // Impacts touch particles, not env fields — nothing to check.
+                genesis_config::ActionKind::Impact { .. } => None,
             };
-            assert!(
-                (field as usize) < env.field_count(),
-                "action {i} references env field {field} but the config declares {} field(s)",
-                env.field_count()
-            );
+            if let Some(field) = field {
+                assert!(
+                    (field as usize) < env.field_count(),
+                    "action {i} references env field {field} but the config declares {} field(s)",
+                    env.field_count()
+                );
+            }
         }
         let mut world = World::new();
         world.insert_resource(GridGeom::new(
@@ -1485,6 +1526,158 @@ mod tests {
             "{west} of {} bonded endpoints in the still-closed west half",
             bonded_x.len()
         );
+    }
+
+    fn impact_action(tick: u64, x: f32, y: f32, count: u32) -> genesis_config::PlayerAction {
+        genesis_config::PlayerAction {
+            tick,
+            action: genesis_config::ActionKind::Impact {
+                x,
+                y,
+                radius: 24.0,
+                impulse: 2.0,
+                energy: 5.0,
+                payload: genesis_config::PayloadSpec {
+                    count,
+                    matter: genesis_config::Range::new(0.3, 0.9),
+                    energy: genesis_config::Range::new(0.5, 1.5),
+                    information: genesis_config::Range::new(0.0, 0.2),
+                    speed: genesis_config::Range::new(0.2, 1.0),
+                    spread: 6.0,
+                },
+            },
+        }
+    }
+
+    #[test]
+    fn impact_injects_exactly_its_payload_plus_shock() {
+        // The one deliberate exception to closed-world conservation
+        // (decisions log 2026-07-06: external material): an impact injects
+        // matter/energy, and the injection is *bounded exactly* by what the
+        // action declares. Twin runs with and without the impact, no rules —
+        // physics conserves matter by construction and never touches the
+        // energy quantity, so the difference is the impact alone.
+        let totals = |s: &WorldSnapshot| {
+            let m: f64 = s.particles.iter().map(|p| p.matter as f64).sum();
+            let e: f64 = s.particles.iter().map(|p| p.energy as f64).sum();
+            (m, e)
+        };
+        let count = 40u32;
+        let mut with = Simulation::with_rules_and_actions(
+            &test_config(),
+            RuleSet::default(),
+            script(vec![impact_action(10, 128.0, 128.0, count)]),
+        );
+        let mut without = Simulation::new(&test_config());
+        for _ in 0..20 {
+            with.tick();
+            without.tick();
+        }
+        let (snap_with, snap_without) = (with.snapshot(), without.snapshot());
+        assert_eq!(
+            snap_with.particles.len(),
+            snap_without.particles.len() + count as usize,
+            "payload count must arrive exactly"
+        );
+        assert_eq!(snap_with.next_id, snap_without.next_id + count as u64);
+        let (m1, e1) = totals(&snap_with);
+        let (m0, e0) = totals(&snap_without);
+        // Payload quantities are RNG draws inside declared ranges; the shock
+        // energy (5.0) deposits in full — the world is dense enough that the
+        // 24-radius shock at the world center always finds particles.
+        let (dm, de) = (m1 - m0, e1 - e0);
+        let n = count as f64;
+        assert!(
+            dm >= n * 0.3 - 1e-3 && dm <= n * 0.9 + 1e-3,
+            "matter injection {dm} outside declared payload range"
+        );
+        assert!(
+            de >= n * 0.5 + 5.0 - 1e-2 && de <= n * 1.5 + 5.0 + 1e-2,
+            "energy injection {de} outside payload range + shock"
+        );
+    }
+
+    #[test]
+    fn scripted_impact_is_deterministic_and_thread_invariant() {
+        // Impacts run through the full stack (drain -> shock -> payload RNG
+        // -> canonicalize -> physics + rules): same seed + script must be one
+        // universe on any thread count.
+        let run = |threads: usize| {
+            let pool = rayon::ThreadPoolBuilder::new()
+                .num_threads(threads)
+                .build()
+                .unwrap();
+            pool.install(|| {
+                let mut sim = Simulation::with_rules_and_actions(
+                    &test_config(),
+                    bonding_rules(),
+                    script(vec![
+                        impact_action(20, 64.0, 64.0, 30),
+                        impact_action(20, 192.0, 192.0, 30), // same-tick sibling
+                        impact_action(60, 128.0, 128.0, 0),  // pure shock
+                    ]),
+                );
+                for _ in 0..100 {
+                    sim.tick();
+                }
+                sim.state_hash()
+            })
+        };
+        assert_eq!(run(1), run(1), "scripted impacts not deterministic");
+        assert_eq!(run(1), run(4), "impacts broke thread-count invariance");
+    }
+
+    #[test]
+    fn resume_with_pending_impact_matches_uninterrupted() {
+        let make = || {
+            Simulation::with_rules_and_actions(
+                &test_config(),
+                bonding_rules(),
+                script(vec![impact_action(60, 128.0, 128.0, 25)]),
+            )
+        };
+        let mut a = make();
+        let mut b = make();
+        for _ in 0..40 {
+            a.tick();
+            b.tick();
+        }
+        let snap = b.snapshot();
+        assert_eq!(snap.pending_actions.len(), 1, "impact must still pend");
+        let mut resumed = Simulation::from_snapshot(&snap);
+        drop(b);
+        for _ in 0..40 {
+            a.tick();
+            resumed.tick();
+        }
+        assert_eq!(
+            a.state_hash(),
+            resumed.state_hash(),
+            "resume diverged — the pending impact (payload RNG included) \
+             must fire identically after restore"
+        );
+    }
+
+    #[test]
+    fn pending_impact_is_replay_identity() {
+        // Two runs with identical state but different queued impacts have
+        // different futures, so they must hash apart from tick 0 — and from
+        // an action-free run.
+        let bare = Simulation::new(&test_config()).state_hash();
+        let queued = Simulation::with_rules_and_actions(
+            &test_config(),
+            RuleSet::default(),
+            script(vec![impact_action(1000, 64.0, 64.0, 10)]),
+        )
+        .state_hash();
+        let queued_other = Simulation::with_rules_and_actions(
+            &test_config(),
+            RuleSet::default(),
+            script(vec![impact_action(1000, 64.0, 64.0, 11)]),
+        )
+        .state_hash();
+        assert_ne!(bare, queued, "a pending impact must be replay identity");
+        assert_ne!(queued, queued_other, "every impact parameter is identity");
     }
 
     #[test]

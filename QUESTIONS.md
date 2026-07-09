@@ -20,3 +20,9 @@ clearly recommendable or the fork touches something irreversible.
   cap `information_max` in replay identity, recorded in the decisions log
   2026-07-06. **Implemented 2026-07-06** (save format v7): clamp at
   interaction commit, cap in replay identity, verified deterministic.
+- **Q-2026-07-09-A** (asteroid impact semantics) → adopted autonomously per
+  the standing guidance: the 2026-07-06 decisions-log entry already fixed
+  the shape (replay-recorded event; momentum + energy shock; payload as
+  quantity ranges); the remaining forks (falloff form, deposit
+  normalization, payload stream derivation) had one clearly recommendable
+  option each. Recorded in the decisions log 2026-07-09; save format v13.

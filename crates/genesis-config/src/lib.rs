@@ -11,7 +11,7 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
-pub use actions::{ActionKind, ActionScript, PlayerAction, RegionSpec};
+pub use actions::{ActionKind, ActionScript, PayloadSpec, PlayerAction, RegionSpec};
 pub use rules::{BoundsSpec, ConditionSpec, EnvBoundSpec, RulePack, RuleSpec, TransferSpec};
 
 /// Inclusive-exclusive range `[lo, hi)` used for initial particle quantities.
