@@ -20,6 +20,13 @@ clearly recommendable or the fork touches something irreversible.
   cap `information_max` in replay identity, recorded in the decisions log
   2026-07-06. **Implemented 2026-07-06** (save format v7): clamp at
   interaction commit, cap in replay identity, verified deterministic.
+- **Q-2026-07-09-B** (renderer snapshot mechanism, open design question 4)
+  → lockstep-with-extraction-seam for v1 (the Observer precedent; a
+  dedicated sim thread + double buffer stays a consumer-invisible upgrade
+  behind the `RenderFrame` seam). Recorded in the decisions log
+  2026-07-09; plan in docs/research/render-bootstrap.md. Adopted
+  autonomously per the standing guidance — one option was clearly
+  recommendable and nothing is irreversible (the seam is the hedge).
 - **Q-2026-07-09-A** (asteroid impact semantics) → adopted autonomously per
   the standing guidance: the 2026-07-06 decisions-log entry already fixed
   the shape (replay-recorded event; momentum + energy shock; payload as
