@@ -136,7 +136,13 @@ script — verifies DETERMINISTIC over 3000 ticks.
 particle payload drawn from quantity ranges, replay-recorded like every
 player action; pending impacts hash, applied ones are state. Injection is
 exactly the declared payload + shock (tested); `scripts/bombardment.ron`
-verifies DETERMINISTIC across fresh/resume/thread-count.
+verifies DETERMINISTIC across fresh/resume/thread-count. **Hardened
+2026-07-09 (night review):** the shock's falloff-weight sum is taken in
+particle-id order — the drain-time store layout differs between an
+uninterrupted run and a fresh resume, so an impact stamped for the save
+tick used to diverge bitwise; regression-tested. Rim membership is now
+positive falloff weight, closing a ULP edge that could silently drop the
+whole energy deposit.
 
 Remaining Phase 4 work: the remaining player verbs as their systems land
 (rotation, magnetic field, tectonics), and chunk streaming — scoped and
@@ -208,9 +214,18 @@ crate (deliberately Bevy-free until step 2) — tier selection by particles
 per pixel, T0/T1 camera-space sprite extraction (torus-seam correct by
 construction), T0 bond segments (seam bonds render as the short segment),
 T2/T3 cell aggregation, RON `VisualMapping` loader (never replay identity).
-Read-only at the type level; fully unit-tested headless. Next: step 2 (Bevy
-app shell) needs a machine with a display for runtime verification —
-autonomous cloud sessions stop at the testable boundary.
+Read-only at the type level; fully unit-tested headless. **Hardened
+2026-07-09 (night review):** views wider than the world tile wrapped
+instance copies (bond copies land exactly on sprite copies), bonds cull
+by segment box instead of vanishing while crossing a zoomed-in view,
+mappings validate at load, hue stays in [0,1) at the wrap edge.
+**Step 3 logic half landed 2026-07-09**: `raster` module — RON palette
+ramps (`palettes/`: default, colorblind-safe, debug-gray) and cell
+aggregates → RGBA8 with torus-wrapped world-rect sampling + 4×4 Bayer
+ordered dithering, pure and byte-deterministic. Next: step 2 (Bevy app
+shell) needs a machine with a display for runtime verification —
+autonomous cloud sessions stop at the testable boundary; the step 3 GPU
+half (texture upload + integer upscale) rides along with it.
 
 Deliverables:
 
