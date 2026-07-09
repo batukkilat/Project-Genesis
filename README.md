@@ -6,7 +6,7 @@ An Artificial Life Research Sandbox: the emergence of complexity from first prin
 > Simulate possibility.
 
 - **[Prompts/MASTER_PROMPT.md](Prompts/MASTER_PROMPT.md)** — the constitution: vision, immutable rules, architecture.
-- **[ROADMAP.md](ROADMAP.md)** — the phased plan (canonical). Phases 1–3 complete; Phase 4 (environment) and Phase 5 (Observer) exit criteria pass; Phase 6 (rendering) may begin.
+- **[ROADMAP.md](ROADMAP.md)** — the phased plan (canonical). Phases 1–3 complete; Phase 4 (environment) and Phase 5 (Observer) exit criteria pass; Phase 6 (rendering) underway — extraction core landed, windowed app next.
 - **[Prompts/spec/](Prompts/spec)** — per-system specifications.
 - **[packs/](packs)** — authored interaction rule packs (RON); a pack is content, not code.
 
@@ -15,8 +15,9 @@ An Artificial Life Research Sandbox: the emergence of complexity from first prin
 - **Phase 1 — Foundation**: workspace, deterministic RNG (SplitMix64 + order-free derived streams), state hashing, fixed-timestep ECS loop, versioned saves. ✅
 - **Phase 2 — Physics & space**: torus world, canonical (cell, id) SoA layout, generic short-range kernel, chunk-parallel forces with thread-count-invariant hashes (proven at 1M particles — [BASELINES.md](BASELINES.md)). ✅
 - **Phase 3 — Interactions & chemistry**: data-driven rule engine (condition → probability → action), quantity transfers, RON rule-pack authoring, bonds (canonical edge list + per-tick CSR mirror, harmonic spring forces, rule-driven create/break), lossy information copy + decay (information deliberately non-conserved), particle emit/absorb (split/merge, conserved per event, ids never reused). Two-regime demo (packs/actual.ron vs packs/sandbox.ron — same engine, opposite economies). Exit review passed ([docs/research/phase3-exit-review.md](docs/research/phase3-exit-review.md)): persistent uncoded structures over 20k ticks, deterministic and conserved throughout. ✅
-- **Phase 4 — Environment & planet**: adaptive-detail LOD groundwork (quiet chunks tick less, conservation exact, ~10M baseline); generic environment fields on their own coarse grid, gating rules via `env_cond` (configs/env-gradient.ron + packs/bands.ron); field dynamics (diffusion + relaxation, default-off); player action stream — tick-stamped, replay-recorded environment edits, run headless via `--actions` (scripts/terraform-west.ron). Exit criteria pass ✅; remaining player verbs (rotation, tectonics, asteroids) land with their systems; chunk streaming deferred until an out-of-memory target exists.
+- **Phase 4 — Environment & planet**: adaptive-detail LOD groundwork (quiet chunks tick less, conservation exact, ~10M baseline); generic environment fields on their own coarse grid, gating rules via `env_cond` (configs/env-gradient.ron + packs/bands.ron); field dynamics (diffusion + relaxation, default-off); player action stream — tick-stamped, replay-recorded actions, run headless via `--actions`: environment edits (scripts/terraform-west.ron) and asteroid impacts — momentum + energy shock plus a quantity-range particle payload (scripts/bombardment.ron). Exit criteria pass ✅; remaining player verbs (rotation, tectonics) land with their systems; chunk streaming deferred until an out-of-memory target exists.
 - **Phase 5 — Observer**: read-only `genesis-observer` crate — bond-graph structures with stable observer ids, metrics v1 (persistence, stability, complexity, information), two confidence-scored hypotheses (*possibly self-maintaining*, *possibly growing*), timeline recording dumped as RON (`--report`/`--timeline`). Observer on/off provably yields identical state hashes. Exit review passed ([docs/research/phase5-exit-review.md](docs/research/phase5-exit-review.md)). ✅
+- **Phase 6 — Rendering & player experience** (underway): snapshot mechanism settled (lockstep with a `RenderFrame` extraction seam — [docs/research/render-bootstrap.md](docs/research/render-bootstrap.md)); `genesis-render` extraction core landed (zoom tiers, torus-correct camera-space sprites and bonds, heatmap cell aggregation, swappable RON visual mappings — Bevy-free and headless-tested). Next: the windowed Bevy app shell.
 
 ## Workspace
 
@@ -25,8 +26,9 @@ An Artificial Life Research Sandbox: the emergence of complexity from first prin
 | `genesis-core` | Primitives: particle id, 2D vector, torus math, deterministic RNG, state hash. Dependency-free. |
 | `genesis-sim` | ECS world (Bevy ECS, headless): physics kernel, interaction engine, bond storage, snapshots. |
 | `genesis-config` | RON simulation config, rule-pack, and action-script authoring schemas, validated; part of replay identity. |
-| `genesis-persist` | Versioned binary save/load with integrity hash (format v12: physics params, LOD policy, env fields + dynamics, pending actions, rules, bonds, dynamic population). |
+| `genesis-persist` | Versioned binary save/load with integrity hash (format v13: physics params, LOD policy, env fields + dynamics, pending actions incl. impacts, rules, bonds, dynamic population). |
 | `genesis-observer` | Layer 5 (read-only): bond-graph structures with stable ids, metrics, confidence-scored hypotheses, timeline. Cannot mutate simulation state. |
+| `genesis-render` | Phase 6 extraction core (read-only): snapshot → `RenderFrame` (sprites / bonds / cell aggregates by zoom tier), RON visual mappings. Bevy arrives with the app shell. |
 | `genesis-headless` | CLI: run (with `--report` diagnostics, `--observer` config, `--timeline` RON dump), verify determinism, bench, init-config, init-rules. |
 
 ## Quick start
