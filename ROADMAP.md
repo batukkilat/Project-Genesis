@@ -101,8 +101,11 @@ rate (proven by a cross-rate emit/absorb test); the policy is replay identity
 only when enabled (save format v8), so every existing LOD-off run keeps its
 identity. `genesis verify --config configs/lod.ron` proves LOD-on self-identical
 across thread counts and save/resume; the ~10M baseline is in BASELINES.md.
-Forks ratified in the decisions log (Q-2026-07-07-A). Known follow-up: the
-per-tick `canonicalize` sort is unskipped and bounds the speedup (BASELINES.md).
+Forks ratified in the decisions log (Q-2026-07-07-A). The recorded follow-up
+(the per-tick `canonicalize` sort was unskipped and bounded the speedup)
+**landed 2026-07-09**: the sort is now incremental — only cell-changers are
+re-placed — so it scales with motion, not population; bit-identical layout by
+construction, all 2026-07-07 baseline hashes reproduced (BASELINES.md).
 
 **Environment fields shipped 2026-07-08** (Q-2026-07-08-A, save formats v9/v10):
 generic indexed scalar fields on their own coarse torus grid, built from init

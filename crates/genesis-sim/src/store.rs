@@ -46,6 +46,13 @@ pub struct ParticleStore {
     order: Vec<u32>,
     scratch_f32: Vec<f32>,
     scratch_u64: Vec<u64>,
+    scratch_u32: Vec<u32>,
+    new_cell: Vec<u32>,
+    moved: Vec<u32>,
+    /// Set by `push`/`remove_dead`: indices no longer line up with the layout
+    /// the previous `canonicalize` left behind, so the incremental re-sort
+    /// must not trust `cell` and falls back to the full sort.
+    structure_dirty: bool,
 }
 
 impl ParticleStore {
@@ -59,6 +66,7 @@ impl ParticleStore {
 
     #[allow(clippy::too_many_arguments)]
     pub fn push(&mut self, id: u64, px: f32, py: f32, vx: f32, vy: f32, m: f32, e: f32, i: f32) {
+        self.structure_dirty = true;
         self.id.push(id);
         self.px.push(px);
         self.py.push(py);
@@ -76,6 +84,7 @@ impl ParticleStore {
     /// `cell`/`cell_start` go stale and are rebuilt by the next
     /// `canonicalize`.
     pub fn remove_dead(&mut self, alive: &[bool]) {
+        self.structure_dirty = true;
         // The activity mask is compacted alongside only when it is tracked and
         // index-aligned (populated by the classify pass); an empty/short mask
         // means LOD is off, so leave it empty.
@@ -117,22 +126,87 @@ impl ParticleStore {
 
     /// Re-sort all particle arrays into (cell, id) order and rebuild the
     /// per-cell offsets. Must run before the force pass each tick.
+    ///
+    /// The target layout is the unique ascending (cell, id) order — ids are
+    /// unique — so every path below produces bit-identical output; they
+    /// differ only in cost:
+    ///
+    /// - Incremental (`!structure_dirty`): the arrays are still sorted by
+    ///   (previous cell, id), so particles whose cell is unchanged form an
+    ///   already-sorted subsequence; only cell-changers are sorted and merged
+    ///   back in. When nothing changed cell the whole layout is reused. This
+    ///   is what makes the sort scale with *motion* rather than population —
+    ///   the fixed cost that bounded the LOD speedup (BASELINES.md, Phase 4).
+    /// - Full parallel sort: first tick, after create/destroy events, or when
+    ///   a majority of the world changed cells.
     pub fn canonicalize(&mut self, geom: &GridGeom) {
         let n = self.len();
 
-        self.cell.clear();
-        self.cell
-            .extend((0..n).map(|i| geom.cell_of(self.px[i], self.py[i])));
+        // This tick's cells go into scratch: the previous tick's `cell` must
+        // survive intact for the incremental comparison.
+        let mut new_cell = std::mem::take(&mut self.new_cell);
+        new_cell.clear();
+        new_cell.extend((0..n).map(|i| geom.cell_of(self.px[i], self.py[i])));
 
-        self.order.clear();
-        self.order.extend(0..n as u32);
-        let cell = &self.cell;
-        let id = &self.id;
-        self.order.par_sort_unstable_by_key(|&i| {
-            ((cell[i as usize] as u128) << 64) | id[i as usize] as u128
-        });
+        let mut order = std::mem::take(&mut self.order);
+        order.clear();
 
-        let order = std::mem::take(&mut self.order);
+        let mut sorted = false;
+        if !self.structure_dirty && self.cell.len() == n {
+            let mut moved = std::mem::take(&mut self.moved);
+            moved.clear();
+            moved.extend((0..n as u32).filter(|&i| new_cell[i as usize] != self.cell[i as usize]));
+            if moved.is_empty() {
+                // Layout unchanged: `cell` and `cell_start` stay valid as-is.
+                // (`cell_start` can only be missing on a store that has never
+                // canonicalized, i.e. the empty one.)
+                if self.cell_start.len() != geom.cell_count() + 1 {
+                    self.rebuild_cell_start(geom);
+                }
+                self.new_cell = new_cell;
+                self.order = order;
+                self.moved = moved;
+                self.reset_forces(n);
+                return;
+            }
+            // Merging pays while the moved set is a minority; past that the
+            // full parallel sort wins. Same output either way.
+            if moved.len() <= n / 2 {
+                let id = &self.id;
+                let key = |i: u32| ((new_cell[i as usize] as u128) << 64) | id[i as usize] as u128;
+                moved.par_sort_unstable_by_key(|&i| key(i));
+
+                // Two-pointer merge of the stable subsequence (ascending index
+                // = ascending key, since unchanged keys kept last tick's
+                // order) with the sorted moved list. Keys are unique, so the
+                // result is the exact full-sort order.
+                order.reserve(n);
+                let mut mj = 0;
+                for i in 0..n as u32 {
+                    if new_cell[i as usize] != self.cell[i as usize] {
+                        continue; // re-placed via the moved list
+                    }
+                    let k = key(i);
+                    while mj < moved.len() && key(moved[mj]) < k {
+                        order.push(moved[mj]);
+                        mj += 1;
+                    }
+                    order.push(i);
+                }
+                order.extend_from_slice(&moved[mj..]);
+                sorted = true;
+            }
+            self.moved = moved;
+        }
+
+        if !sorted {
+            order.extend(0..n as u32);
+            let id = &self.id;
+            order.par_sort_unstable_by_key(|&i| {
+                ((new_cell[i as usize] as u128) << 64) | id[i as usize] as u128
+            });
+        }
+
         permute_u64(&mut self.id, &order, &mut self.scratch_u64);
         permute_f32(&mut self.px, &order, &mut self.scratch_f32);
         permute_f32(&mut self.py, &order, &mut self.scratch_f32);
@@ -141,17 +215,20 @@ impl ParticleStore {
         permute_f32(&mut self.matter, &order, &mut self.scratch_f32);
         permute_f32(&mut self.energy, &order, &mut self.scratch_f32);
         permute_f32(&mut self.information, &order, &mut self.scratch_f32);
-        {
-            // `cell` is rebuilt cheaply from the permutation as well.
-            let mut scratch = std::mem::take(&mut self.scratch_u64);
-            scratch.clear();
-            scratch.extend(order.iter().map(|&i| self.cell[i as usize] as u64));
-            self.cell.clear();
-            self.cell.extend(scratch.iter().map(|&c| c as u32));
-            self.scratch_u64 = scratch;
-        }
+        // `cell` takes this tick's values, permuted into the new order.
+        self.scratch_u32.clear();
+        self.scratch_u32
+            .extend(order.iter().map(|&i| new_cell[i as usize]));
+        std::mem::swap(&mut self.cell, &mut self.scratch_u32);
+        self.new_cell = new_cell;
         self.order = order;
+        self.structure_dirty = false;
 
+        self.rebuild_cell_start(geom);
+        self.reset_forces(n);
+    }
+
+    fn rebuild_cell_start(&mut self, geom: &GridGeom) {
         self.cell_start.clear();
         self.cell_start.resize(geom.cell_count() + 1, 0);
         for &c in &self.cell {
@@ -160,7 +237,9 @@ impl ParticleStore {
         for i in 1..self.cell_start.len() {
             self.cell_start[i] += self.cell_start[i - 1];
         }
+    }
 
+    fn reset_forces(&mut self, n: usize) {
         self.fx.clear();
         self.fx.resize(n, 0.0);
         self.fy.clear();
@@ -205,6 +284,130 @@ mod tests {
         // cell_start brackets the last cell correctly.
         let last = geom.cell_count();
         assert_eq!(s.cell_start[last], 3);
+    }
+
+    /// Reference layout: push the store's current particles into a fresh
+    /// store (always dirty → full sort) and canonicalize. Every incremental
+    /// path must reproduce this exactly.
+    fn full_sort_reference(s: &ParticleStore, geom: &GridGeom) -> ParticleStore {
+        let mut r = ParticleStore::default();
+        for i in 0..s.len() {
+            r.push(
+                s.id[i],
+                s.px[i],
+                s.py[i],
+                s.vx[i],
+                s.vy[i],
+                s.matter[i],
+                s.energy[i],
+                s.information[i],
+            );
+        }
+        r.canonicalize(geom);
+        r
+    }
+
+    fn assert_same_layout(a: &ParticleStore, b: &ParticleStore, what: &str) {
+        assert_eq!(a.id, b.id, "{what}: id order diverged");
+        assert_eq!(a.px, b.px, "{what}: px diverged");
+        assert_eq!(a.py, b.py, "{what}: py diverged");
+        assert_eq!(a.vx, b.vx, "{what}: vx diverged");
+        assert_eq!(a.vy, b.vy, "{what}: vy diverged");
+        assert_eq!(a.matter, b.matter, "{what}: matter diverged");
+        assert_eq!(a.energy, b.energy, "{what}: energy diverged");
+        assert_eq!(a.information, b.information, "{what}: information diverged");
+        assert_eq!(a.cell, b.cell, "{what}: cell diverged");
+        assert_eq!(a.cell_start, b.cell_start, "{what}: cell_start diverged");
+    }
+
+    #[test]
+    fn incremental_no_moves_keeps_layout_and_resets_forces() {
+        let geom = GridGeom::new(30.0, 30.0, 10.0);
+        let mut s = ParticleStore::default();
+        s.push(2, 25.0, 25.0, 0.0, 0.0, 1.0, 0.0, 0.0);
+        s.push(1, 2.0, 2.0, 0.0, 0.0, 1.0, 0.0, 0.0);
+        s.canonicalize(&geom); // full sort (dirty after pushes)
+        s.fx[0] = 7.0;
+        s.fy[1] = -3.0;
+        // Nothing moved: second canonicalize must take the skip path and
+        // still leave a canonical layout with cleared force accumulators.
+        s.canonicalize(&geom);
+        assert_same_layout(&s, &full_sort_reference(&s, &geom), "no-move skip");
+        assert_eq!(s.fx, vec![0.0, 0.0]);
+        assert_eq!(s.fy, vec![0.0, 0.0]);
+    }
+
+    #[test]
+    fn incremental_merge_matches_full_sort() {
+        let geom = GridGeom::new(30.0, 30.0, 10.0);
+        let mut s = ParticleStore::default();
+        // Nine particles spread over the 3x3 grid.
+        for k in 0..9u64 {
+            let x = (k % 3) as f32 * 10.0 + 5.0;
+            let y = (k / 3) as f32 * 10.0 + 5.0;
+            s.push(k, x, y, 0.0, 0.0, 1.0, 0.5, 0.25);
+        }
+        s.canonicalize(&geom);
+        // Move a minority across cell boundaries (merge path), including a
+        // torus-seam crossing and a swap into an occupied cell.
+        let a = s.id.iter().position(|&x| x == 0).unwrap();
+        s.px[a] = 29.5; // cell (0,0) -> (2,0)
+        let b = s.id.iter().position(|&x| x == 7).unwrap();
+        s.py[b] = 0.5; // cell (1,2) -> (1,0)
+        s.canonicalize(&geom);
+        assert_same_layout(&s, &full_sort_reference(&s, &geom), "merge");
+    }
+
+    #[test]
+    fn incremental_random_walk_always_matches_full_sort() {
+        // Random-walk churn across many ticks exercises skip, merge, and
+        // full-sort paths; after every canonicalize the layout must equal the
+        // from-scratch reference. Deterministic LCG — no wall-clock entropy.
+        let geom = GridGeom::new(50.0, 50.0, 10.0);
+        let mut rng: u64 = 0x9E3779B97F4A7C15;
+        let mut next = || {
+            rng = rng
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            (rng >> 33) as f32 / (1u64 << 31) as f32 // [0, 1)
+        };
+        let mut s = ParticleStore::default();
+        for k in 0..200u64 {
+            s.push(k, next() * 50.0, next() * 50.0, 0.0, 0.0, 1.0, 0.0, 0.0);
+        }
+        s.canonicalize(&geom);
+        for step in 0..40 {
+            // Step size varies: quiet ticks (few cross cells), violent ticks
+            // (most do), and occasional create/destroy to trip the dirty flag.
+            let scale = match step % 4 {
+                0 => 0.0,  // nobody moves — skip path
+                1 => 1.0,  // few cross — merge path
+                _ => 20.0, // most cross — full path
+            };
+            for i in 0..s.len() {
+                s.px[i] = (s.px[i] + (next() - 0.5) * scale).rem_euclid(50.0);
+                s.py[i] = (s.py[i] + (next() - 0.5) * scale).rem_euclid(50.0);
+            }
+            if step % 7 == 3 {
+                let mut alive = vec![true; s.len()];
+                alive[step % s.len()] = false;
+                s.fx.resize(s.len(), 0.0); // remove_dead compacts force slots
+                s.fy.resize(s.len(), 0.0);
+                s.remove_dead(&alive);
+                s.push(
+                    1000 + step as u64,
+                    next() * 50.0,
+                    next() * 50.0,
+                    0.0,
+                    0.0,
+                    1.0,
+                    0.0,
+                    0.0,
+                );
+            }
+            s.canonicalize(&geom);
+            assert_same_layout(&s, &full_sort_reference(&s, &geom), &format!("step {step}"));
+        }
     }
 
     #[test]

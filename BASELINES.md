@@ -5,6 +5,44 @@ reference machine changes; regressions against the last entry need a reason.
 
 Reference machine: WSL2, 12 threads (`rtk`/dev box), release build, engine v0.2.0.
 
+## Phase 4 follow-up (2026-07-09) — incremental canonicalize
+
+Machine: cloud container, 4 threads, release, engine v0.3.0. Same config and
+command as the 2026-07-07 rows below.
+
+`canonicalize` now re-sorts incrementally: particles whose cell is unchanged
+since the previous tick form an already-sorted subsequence, so only
+cell-changers are sorted and merged back in (full parallel sort remains the
+fallback after create/destroy events or mass motion). The layout it produces
+is bit-identical by construction — ids are unique, so the ascending (cell, id)
+order is unique — and every row below with a 2026-07-07 counterpart
+reproduces that hash exactly, which is the cross-build proof.
+
+| N | LOD | Ticks | Particle-ticks/s | vs 2026-07-07 | Active frac | Speedup | State hash |
+|---|---|---|---|---|---|---|---|
+| 10M | off | 40 | 1.45e6 | — | — | 1x | `0x7178ecbb7bd4416b` |
+| 10M | on | 40 | 1.80e6 | 1.82e6 | 0.730 | 1.24x | `0xaf325a58a255ffd4` |
+| 3M | off | 40 | 3.53e6 | 3.49e6 | — | 1x | `0x9a492d417111f795` |
+| 3M | on | 40 | 6.47e6 | 6.16e6 | 0.365 | 1.83x | `0x8555f741a4f22623` |
+
+Notes:
+
+- **Honest result: the win is where the sort was the bottleneck.** At 3M
+  LOD-on the sort was a large share of the per-tick cost → +5% throughput
+  (6.16e6 → 6.47e6, LOD speedup 1.77x → 1.83x). At 10M the force pass
+  dominates (~38 particles/cell) and the rows are parity within noise. The
+  structural change still matters: the sort now scales with *motion*, not
+  population, so the fully-settled regime (cold worlds, the LOD target) no
+  longer pays it at all — when nothing changes cell, the whole permutation
+  (9 SoA arrays) is skipped, not just the sort.
+- **Tick counts, previously unrecorded:** three of the four 2026-07-07
+  hashes reproduce exactly at `--ticks 40` — that is what those rows ran.
+  The 10M LOD-off hash `0x4fdf0260daa242ea` is not a T=40 hash; most
+  plausibly that (slowest) row alone used the default `--ticks 120`. A
+  reproduction run is in flight and its result will be recorded here.
+  Lesson: the state hash depends on the tick count, so baseline rows must
+  state it — this session lost an hour rediscovering that.
+
 ## Phase 4 (2026-07-07) — adaptive detail (LOD), ~10M baseline
 
 Machine: cloud container, 4 threads, release, engine v0.3.0. The gate before
@@ -99,7 +137,7 @@ Notes:
 
 - Hash identical across thread counts — determinism under parallelism holds at 1M scale.
 - Default config: 4096x4096 world, r=8 kernel → ~3.8 particles/cell, ~34 neighbors each.
-- Scaling 4.7x on 12 threads; the canonical (cell,id) sort and memory bandwidth bound the rest. Candidates when Phase 8-style optimization matters: incremental/bucketed re-sort, half-neighborhood force evaluation (Newton's third law), SIMD kernel.
+- Scaling 4.7x on 12 threads; the canonical (cell,id) sort and memory bandwidth bound the rest. Candidates when Phase 8-style optimization matters: incremental/bucketed re-sort (landed 2026-07-09, see the Phase 4 follow-up section), half-neighborhood force evaluation (Newton's third law), SIMD kernel.
 
 ## Phase 1 (2026-07-05, engine v0.1.0)
 
