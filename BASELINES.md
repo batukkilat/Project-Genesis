@@ -5,6 +5,40 @@ reference machine changes; regressions against the last entry need a reason.
 
 Reference machine: WSL2, 12 threads (`rtk`/dev box), release build, engine v0.2.0.
 
+## Phase 4 follow-up (2026-07-09) — single-walk interaction collect
+
+Machine: cloud container, 4 threads, release, engine v0.3.0.
+
+The interaction collect phase used to walk a particle's 3×3 neighborhood
+once per rule, recomputing torus deltas and the distance check R times per
+candidate pair. It now walks once per particle: rules passing self/env
+conditions are shortlisted first, each neighbor's distance is computed once
+and checked against every shortlisted rule, and intents are buffered per
+rule so the intent sequence — and therefore commit order and replay
+identity — is bit-for-bit unchanged (verified: chains/actual/bands hashes
+identical before and after at every scale tried).
+
+Command: `genesis bench --particles N --ticks T --rules packs/X.ron` (old vs new build, quiet box, back to back)
+
+| Pack (rules) | N / T | Old pt/s | New pt/s | Speedup |
+|---|---|---|---|---|
+| chains (2) | 400k / 40 | 1.35e6 | 1.39e6 | +3% |
+| actual (7) | 400k / 40 | 2.45e6 | 2.70e6 | +10% |
+| actual (7) | 1M / 4 | 1.20e6 | 1.29e6 | +8% |
+
+Notes:
+
+- The saving is the duplicated per-rule distance work, so it scales with
+  rule count (chains +3% at 2 rules, actual +8–10% at 7) and with candidate
+  density. The late-run "gel" regime (the 186–744x rows below, where bonds
+  mass-accumulate over 120 ticks) is unmeasured — re-benching it costs
+  hours of wall clock; expected to benefit at least as much, since more
+  neighbors per walk means more duplicated work removed.
+- 1M actual at 4 ticks from a fresh start runs at 1.20e6 pt/s vs the 2.97e4
+  recorded below over 120 ticks: actual.ron's cost explodes as bonds
+  accumulate. Those two numbers describe different regimes of the same
+  pack, not a regression or an improvement.
+
 ## Phase 4 follow-up (2026-07-09) — incremental canonicalize
 
 Machine: cloud container, 4 threads, release, engine v0.3.0. Same config and

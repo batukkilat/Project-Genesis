@@ -508,6 +508,16 @@ pub fn apply(
             let lo = c * par_chunk();
             let hi = (lo + par_chunk()).min(n);
             let mut out = Vec::new();
+            // The neighborhood is walked once per particle (not once per
+            // rule): torus deltas and the distance check are shared across
+            // the rule set. Intents are buffered per rule and appended
+            // rule-ascending after the walk, which reproduces the exact
+            // intent sequence of the historical rule-major loop (for a fixed
+            // initiator: sorted by rule, then by canonical neighbor order) —
+            // the commit order, and therefore replay identity, is unchanged.
+            let mut per_rule: Vec<Vec<Intent>> = vec![Vec::new(); rules.rules.len()];
+            // Rules whose self/env conditions pass for the current initiator.
+            let mut passing: Vec<(u32, f32)> = Vec::with_capacity(rules.rules.len());
             for i in lo..hi {
                 if lod && !active[i] {
                     continue;
@@ -517,6 +527,8 @@ pub fn apply(
                 } else {
                     0
                 };
+                passing.clear();
+                let mut max_r2 = 0.0f32;
                 for (ridx, rule) in rules.rules.iter().enumerate() {
                     if !rule.self_cond.matches(matter[i], energy[i], information[i]) {
                         continue;
@@ -525,21 +537,33 @@ pub fn apply(
                         continue;
                     }
                     let r2_cut = rule.radius * rule.radius;
-                    for &nc in geom.neighbors_of(cell[i]).iter() {
-                        let start = cell_start[nc as usize] as usize;
-                        let end = cell_start[nc as usize + 1] as usize;
-                        for j in start..end {
-                            if j == i {
+                    passing.push((ridx as u32, r2_cut));
+                    max_r2 = max_r2.max(r2_cut);
+                }
+                if passing.is_empty() {
+                    continue;
+                }
+                for &nc in geom.neighbors_of(cell[i]).iter() {
+                    let start = cell_start[nc as usize] as usize;
+                    let end = cell_start[nc as usize + 1] as usize;
+                    for j in start..end {
+                        if j == i {
+                            continue;
+                        }
+                        if lod && !active[j] {
+                            continue;
+                        }
+                        let dx = genesis_core::torus::delta(px[i], px[j], world.0);
+                        let dy = genesis_core::torus::delta(py[i], py[j], world.1);
+                        let r2 = dx * dx + dy * dy;
+                        if r2 >= max_r2 {
+                            continue;
+                        }
+                        for &(ridx, r2_cut) in &passing {
+                            if r2 >= r2_cut {
                                 continue;
                             }
-                            if lod && !active[j] {
-                                continue;
-                            }
-                            let dx = genesis_core::torus::delta(px[i], px[j], world.0);
-                            let dy = genesis_core::torus::delta(py[i], py[j], world.1);
-                            if dx * dx + dy * dy >= r2_cut {
-                                continue;
-                            }
+                            let rule = &rules.rules[ridx as usize];
                             if !rule
                                 .other_cond
                                 .matches(matter[j], energy[j], information[j])
@@ -555,16 +579,19 @@ pub fn apply(
                                     0.0
                                 };
                                 let emit_u = if rule.emit { pair_rng.next_f32() } else { 0.0 };
-                                out.push(Intent {
+                                per_rule[ridx as usize].push(Intent {
                                     initiator: i as u32,
                                     other: j as u32,
-                                    rule: ridx as u32,
+                                    rule: ridx,
                                     noise_u,
                                     emit_u,
                                 });
                             }
                         }
                     }
+                }
+                for buf in per_rule.iter_mut() {
+                    out.append(buf);
                 }
             }
             out
