@@ -222,7 +222,13 @@ mappings validate at load, hue stays in [0,1) at the wrap edge.
 **Step 3 logic half landed 2026-07-09**: `raster` module — RON palette
 ramps (`palettes/`: default, colorblind-safe, debug-gray) and cell
 aggregates → RGBA8 with torus-wrapped world-rect sampling + 4×4 Bayer
-ordered dithering, pure and byte-deterministic. Next: step 2 (Bevy app
+ordered dithering, pure and byte-deterministic.
+**Step 4 logic half completed 2026-07-10** (pacer landed 2026-07-09):
+`brush` module + `Simulation::queue_action` — a brush stamp becomes
+1/2/4 seam-wrapped rects → ordinary `PlayerAction` records fed through
+the one scripted-action path (Q-2026-07-08-B), with validated live
+enqueue on the sim (Result, never panic; queue-mid-run bit-identical to
+the same action scripted, survives save/resume). Next: step 2 (Bevy app
 shell) needs a machine with a display for runtime verification —
 autonomous cloud sessions stop at the testable boundary; the step 3 GPU
 half (texture upload + integer upscale) rides along with it.

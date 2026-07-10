@@ -116,7 +116,13 @@ torus seam duplication, tier thresholds, aggregate math, mapping edges.
    landed 2026-07-09* (`pacer` module): `WarpPacer` turns measured frame
    time + a tick budget into a whole-tick `FramePlan` with a starvation
    flag for the honesty display; fractional-tick carry, no catch-up
-   bursts, wall clock never enters the sim.
+   bursts, wall clock never enters the sim. *Logic half completed
+   2026-07-10* (`brush` module + `Simulation::queue_action`): a brush
+   stamp becomes 1/2/4 seam-wrapped `RegionSpec` rects → ordinary
+   `PlayerAction` records, and the sim grew the validated live-enqueue
+   the UI needs (Result, never panic; queue-mid-run proven bit-identical
+   to the same action scripted at construction). The Bevy half only
+   wires mouse input to `stamp_actions`.
 5. **Observer panel + inspector,** panel-only annotations (owner decision
    2026-07-08). Save/load/branch UI last.
 

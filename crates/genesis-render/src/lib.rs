@@ -11,6 +11,7 @@
 //! out). Visual mappings are data files a player can swap; they are never
 //! replay identity (docs/design/visuals.md, principle 4).
 
+pub mod brush;
 pub mod pacer;
 pub mod raster;
 

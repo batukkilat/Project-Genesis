@@ -19,7 +19,9 @@ pub mod snapshot;
 pub mod store;
 
 use bevy_ecs::prelude::*;
-use genesis_config::{ActionScript, LodPolicy, PhysicsParams, PlayerAction, SimConfig};
+use genesis_config::{
+    ActionScript, ConfigError, LodPolicy, PhysicsParams, PlayerAction, SimConfig,
+};
 use genesis_core::DetRng;
 
 use bonds::BondStore;
@@ -383,6 +385,55 @@ impl Simulation {
     /// Advance the simulation by exactly one fixed timestep.
     pub fn tick(&mut self) {
         self.schedule.run(&mut self.world);
+    }
+
+    /// Queue a player action into the running simulation — the live-play
+    /// half of Q-2026-07-08-B (the UI emits the identical records a script
+    /// contains; one representation for scripted, recorded, and live play).
+    ///
+    /// The action must be structurally valid, reference a declared env
+    /// field, and be stamped for the current tick or later — an action
+    /// stamped `tick_count()` applies at the start of the next [`tick`]
+    /// call. Unlike construction (which panics on a bad script, a
+    /// programming error), live input is user input: bad actions are
+    /// reported, never fatal.
+    ///
+    /// Queued actions join replay identity while pending, exactly like
+    /// scripted ones: the pending queue hashes, applied actions are already
+    /// state (docs/research/player-actions.md).
+    ///
+    /// [`tick`]: Simulation::tick
+    pub fn queue_action(&mut self, action: PlayerAction) -> Result<(), ConfigError> {
+        action.action.validate()?;
+        let now = self.world.resource::<Tick>().0;
+        if action.tick < now {
+            return Err(ConfigError::Invalid(format!(
+                "action is stamped for tick {} but the simulation is at tick {now} — \
+                 a past-stamped action could never replay identically",
+                action.tick
+            )));
+        }
+        let field = match action.action {
+            genesis_config::ActionKind::FieldSet { field, .. } => Some(field),
+            genesis_config::ActionKind::FieldAdd { field, .. } => Some(field),
+            genesis_config::ActionKind::Impact { .. } => None,
+        };
+        if let Some(field) = field {
+            let declared = self.world.resource::<EnvFields>().field_count();
+            if field as usize >= declared {
+                return Err(ConfigError::Invalid(format!(
+                    "action references env field {field} but the config declares \
+                     {declared} field(s)"
+                )));
+            }
+        }
+        // Keep the queue sorted by stamped tick with arrival order breaking
+        // ties — the same order a script with these actions would produce,
+        // and what the start-of-tick drain's `take_while` relies on.
+        let pending = &mut self.world.resource_mut::<Pending>().0;
+        let at = pending.partition_point(|a| a.tick <= action.tick);
+        pending.insert(at, action);
+        Ok(())
     }
 
     pub fn tick_count(&self) -> u64 {
@@ -1760,6 +1811,143 @@ mod tests {
             RuleSet::default(),
             script(vec![set_action(10, 0.0, 128.0, 1.0)]),
         );
+    }
+
+    #[test]
+    fn queued_action_matches_scripted_run_bit_for_bit() {
+        // Live play and scripted play are one representation
+        // (Q-2026-07-08-B): queueing an action mid-run must land in the
+        // identical universe as constructing with the same script.
+        let mut config = gradient_config();
+        config.env = env_with(vec![field(genesis_config::FieldInit::Uniform(0.0))]);
+        let mut scripted = Simulation::with_rules_and_actions(
+            &config,
+            banded_bond_rules(),
+            script(vec![set_action(60, 0.0, 128.0, 1.0)]),
+        );
+        let mut live = Simulation::with_rules_and_actions(
+            &config,
+            banded_bond_rules(),
+            ActionScript::default(),
+        );
+        for _ in 0..30 {
+            scripted.tick();
+            live.tick();
+        }
+        live.queue_action(set_action(60, 0.0, 128.0, 1.0)).unwrap();
+        for _ in 0..70 {
+            scripted.tick();
+            live.tick();
+        }
+        assert_eq!(
+            scripted.state_hash(),
+            live.state_hash(),
+            "a live-queued action diverged from the identical scripted one"
+        );
+    }
+
+    #[test]
+    fn queued_actions_interleave_with_scripted_ones_in_stamp_order() {
+        // A live edit stamped *before* a pending scripted one must apply
+        // first, and two same-tick edits apply in arrival order (last write
+        // wins on the overlapping cells) — exactly like a script would.
+        let mut config = test_config();
+        config.env = env_with(vec![field(genesis_config::FieldInit::Uniform(0.0))]);
+        let mut sim = Simulation::with_rules_and_actions(
+            &config,
+            RuleSet::default(),
+            script(vec![set_action(50, 0.0, 256.0, 9.0)]),
+        );
+        sim.queue_action(set_action(10, 0.0, 256.0, 1.0)).unwrap();
+        sim.queue_action(set_action(10, 0.0, 256.0, 2.0)).unwrap();
+        for _ in 0..11 {
+            sim.tick();
+        }
+        let snap = sim.snapshot();
+        assert!(
+            snap.env_fields[0].iter().all(|&v| v == 2.0),
+            "same-tick queued edits must apply in arrival order"
+        );
+        assert_eq!(snap.pending_actions.len(), 1, "scripted edit still pends");
+        for _ in 0..40 {
+            sim.tick();
+        }
+        assert!(
+            sim.snapshot().env_fields[0].iter().all(|&v| v == 9.0),
+            "scripted edit must still apply after live ones"
+        );
+    }
+
+    #[test]
+    fn queued_action_survives_save_resume() {
+        // A queue-then-save run must resume into the identical future an
+        // uninterrupted run reaches (the pending queue is in the save, v11).
+        let mut config = gradient_config();
+        config.env = env_with(vec![field(genesis_config::FieldInit::Uniform(0.0))]);
+        let make = || {
+            Simulation::with_rules_and_actions(
+                &config,
+                banded_bond_rules(),
+                ActionScript::default(),
+            )
+        };
+        let mut uninterrupted = make();
+        let mut saved = make();
+        for _ in 0..30 {
+            uninterrupted.tick();
+            saved.tick();
+        }
+        uninterrupted
+            .queue_action(set_action(60, 0.0, 128.0, 1.0))
+            .unwrap();
+        saved.queue_action(set_action(60, 0.0, 128.0, 1.0)).unwrap();
+        let mut resumed = Simulation::from_snapshot(&saved.snapshot());
+        for _ in 0..70 {
+            uninterrupted.tick();
+            resumed.tick();
+        }
+        assert_eq!(
+            uninterrupted.state_hash(),
+            resumed.state_hash(),
+            "a queued action must survive save/resume bit-for-bit"
+        );
+    }
+
+    #[test]
+    fn queue_action_rejects_bad_input_without_panicking() {
+        // Live input is user input: bad actions are errors, never fatal, and
+        // a rejected action must leave no trace on replay identity.
+        let mut config = test_config();
+        config.env = env_with(vec![field(genesis_config::FieldInit::Uniform(0.0))]);
+        let mut sim = Simulation::with_rules(&config, RuleSet::default());
+        for _ in 0..20 {
+            sim.tick();
+        }
+        let before = sim.state_hash();
+
+        // Past-stamped: the sim is at tick 20.
+        assert!(sim.queue_action(set_action(10, 0.0, 128.0, 1.0)).is_err());
+        // Missing field: only field 0 is declared.
+        let mut bad_field = set_action(30, 0.0, 128.0, 1.0);
+        if let genesis_config::ActionKind::FieldSet { field, .. } = &mut bad_field.action {
+            *field = 7;
+        }
+        assert!(sim.queue_action(bad_field).is_err());
+        // Structurally invalid: non-finite value.
+        assert!(
+            sim.queue_action(set_action(30, 0.0, 128.0, f32::NAN))
+                .is_err()
+        );
+
+        assert_eq!(
+            sim.state_hash(),
+            before,
+            "a rejected action must not perturb the pending queue"
+        );
+        // Stamping the current tick is legal: it applies on the next tick().
+        sim.queue_action(set_action(20, 0.0, 256.0, 3.0)).unwrap();
+        sim.tick();
+        assert!(sim.snapshot().env_fields[0].iter().all(|&v| v == 3.0));
     }
 
     #[test]

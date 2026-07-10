@@ -9,6 +9,7 @@ edition.workspace = true
 # be needed to build or test this layer.
 [dependencies]
 genesis-core = { workspace = true }
+genesis-config = { workspace = true }
 genesis-sim = { workspace = true }
 serde = { workspace = true }
 ron = { workspace = true }

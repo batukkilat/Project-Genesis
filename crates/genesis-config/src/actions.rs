@@ -108,7 +108,11 @@ pub enum ActionKind {
 }
 
 impl ActionKind {
-    fn validate(&self) -> Result<(), ConfigError> {
+    /// Structural validity of one action (finite values, ordered region,
+    /// sane payload). Public because live play queues single actions into a
+    /// running simulation (Q-2026-07-08-B: the UI is just another script
+    /// author) and must reject bad ones the same way script loading does.
+    pub fn validate(&self) -> Result<(), ConfigError> {
         match *self {
             ActionKind::FieldSet { region, value, .. } => {
                 region.validate()?;

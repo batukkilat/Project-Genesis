@@ -603,6 +603,7 @@ dependencies = [
 name = "genesis-render"
 version = "0.3.0"
 dependencies = [
+ "genesis-config",
  "genesis-core",
  "genesis-sim",
  "ron",
