@@ -4,7 +4,89 @@ Design forks not settled in the ROADMAP decisions log. Work that depends on
 an entry here is blocked until the answer is recorded in the decisions log;
 everything else continues. Format: context, options, recommendation.
 
-*(no open questions)*
+## Q-2026-07-10-B — planet rotation: what is it in a 2D torus?
+
+**Context.** The constitution lists "planet rotation" among the player's
+environment verbs (rule 4); ROADMAP Phase 4 defers it until its system
+lands. On a 2D torus viewed top-down there is no rotation axis, so the
+verb needs a physical reading before it can be a system. Whatever is
+chosen becomes a physics/replay-identity change (new param, save format
+bump) and shapes what can emerge — this is an emergence-critical fork
+like information semantics was.
+
+**Options.**
+- **A — frame spin (Coriolis-style).** A `spin` physics param; every
+  particle gets the generic velocity-dependent acceleration
+  `a = 2·spin·perp(v)`. Player action `SpinSet(value)`. Generic (no Earth
+  assumption), cheap (one fused multiply in integrate), and it visibly
+  bends trajectories — vortices and shear bands can emerge. But it breaks
+  momentum conservation by design (a rotating frame is non-inertial), so
+  conservation accounting needs a carve-out, and time-reversal symmetry
+  of the kernel changes.
+- **B — insolation cycling.** Rotation = a periodic driver for env
+  fields: a config-declared oscillation (period in ticks, axis, phase)
+  that modulates a chosen field (the "day/night" reading). Pure env-layer
+  change (fields already exist; dynamics already hash conditionally); no
+  physics touch; but it silently reintroduces the *source* concept cut
+  from field dynamics v1, and rotation stops being felt by particles
+  directly.
+- **C — both, staged.** A as the Phase 4 verb (it is the mechanical
+  reading of "rotation"); B later as a generic field-oscillator when
+  content demands day/night — explicitly a field-dynamics extension, not
+  a rotation feature.
+
+**Recommendation (weak).** C's first half — A alone — is the honest
+mechanical reading, but the momentum-conservation carve-out contradicts
+"matter and energy conserved" instincts and deserves owner sign-off;
+B alone reads as rotation only by convention. No option is clearly
+recommendable without deciding how much non-inertial physics the
+constitution's "Actual Physics" mode tolerates. **Parked.**
+
+## Q-2026-07-10-C — tectonic events: what do they do?
+
+**Context.** "Tectonic events" is a constitutional player verb; nothing
+in the engine models solid substrate, plates, or terrain — there is no
+height, no ground, only particles and env fields. The verb needs a
+mechanically-honest v1.
+
+**Options.**
+- **A — line-source impact.** A recorded action like `Impact`, but the
+  shock source is a world-coordinate *segment* instead of a point:
+  momentum impulse perpendicular to the segment (shear/rift), energy
+  deposit with distance falloff, optional particle payload (upwelling).
+  Reuses the entire impact machinery (falloff weights, order-free payload
+  RNG, pending-hash rules); a rift is authorable today.
+- **B — env-field rewrite event.** A tectonic event edits env fields in
+  a band (e.g. steps a "temperature-like" field along a line), letting
+  rules react — no direct particle touch. Weaker mechanically; mostly
+  achievable already with FieldSet regions.
+- **C — A + B composed.** One recorded event carrying both a line shock
+  and a set of band field edits.
+
+**Recommendation.** A is nearly clearly-recommendable (pure
+generalization of a shipped, settled system; conserves exactly like
+impacts; no new concepts below the Observer). Parked only because the
+verb is constitutional surface area and cheap to confirm — if a session
+needs it before an answer arrives, A is the option to adopt per the
+standing guidance.
+
+## Q-2026-07-10-D — magnetic field: blocked on a radiation quantity
+
+**Context.** The constitutional verb list includes "magnetic field", and
+its only physical role (shielding radiation) references a *radiation*
+environment that does not exist. Radiation itself is a fork: an env
+field like any other (declare `radiation` as field N, rules gate on it —
+possible today with zero engine change) vs. a particle-flux mechanism
+(directional, transports energy, interacts).
+
+**Options.** (1) magnetic field = a declared env field modulating
+another declared env field via a new generic field-coupling operator;
+(2) magnetic field = parameter of a future radiation-flux system;
+(3) drop the verb until radiation exists (it is meaningless alone).
+
+**Recommendation.** 3 — do nothing yet. Any mechanism invented now would
+be speculative architecture (GOAL forbids inventing architecture to stay
+busy). Revisit when radiation content exists. **Parked.**
 
 **Standing guidance from the owner (2026-07-06):** when a parked question
 carries a clear recommendation, autonomous sessions may adopt the

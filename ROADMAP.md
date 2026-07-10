@@ -146,10 +146,11 @@ positive falloff weight, closing a ULP edge that could silently drop the
 whole energy deposit.
 
 Remaining Phase 4 work: the remaining player verbs as their systems land
-(rotation, magnetic field, tectonics), and chunk streaming — scoped and
-**deliberately deferred** until an out-of-memory scale target exists
-(docs/research/chunk-streaming.md). Phase 5 may begin: this phase's exit
-criteria pass.
+(rotation, magnetic field, tectonics — design forks parked 2026-07-10 as
+Q-2026-07-10-B/C/D in QUESTIONS.md with options and recommendations),
+and chunk streaming — scoped and **deliberately deferred** until an
+out-of-memory scale target exists (docs/research/chunk-streaming.md).
+Phase 5 may begin: this phase's exit criteria pass.
 
 Deliverables:
 
