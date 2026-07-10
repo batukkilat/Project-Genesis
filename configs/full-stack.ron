@@ -1,0 +1,44 @@
+// Kitchen-sink determinism scenario: every shipped Phase 2-4 feature on at
+// once. Cross-feature interaction is where determinism bugs hide — LOD
+// gating around action-injected particles, dynamic fields under scripted
+// edits, rifts and impacts landing mid-LOD-stride — so this config exists
+// to be verified, not played:
+//
+//   genesis verify --config configs/full-stack.ron --rules packs/bands.ron \
+//                  --actions scripts/full-stack.ron --ticks 3000
+//
+// Enabled here: environment fields (a west-east ramp with diffusion + a
+// relaxing "climate" field), adaptive detail (three-rung ladder). The
+// paired script adds field edits, an asteroid impact, and a tectonic rift.
+(
+    seed: 7,
+    particle_count: 10000,
+    world_width: 1024.0,
+    world_height: 1024.0,
+    ticks_per_second: 60,
+    initial: (
+        matter: (lo: 0.1, hi: 1.0),
+        energy: (lo: 0.0, hi: 1.0),
+        information: (lo: 0.0, hi: 1.0),
+        speed: (lo: 0.0, hi: 2.0),
+    ),
+    lod: (
+        enabled: true,
+        chunk_cells: 8,
+        ladder: [
+            (min_activity: 0.0, rate: 8),
+            (min_activity: 0.25, rate: 4),
+            (min_activity: 1.0, rate: 1),
+        ],
+    ),
+    env: (
+        cols: 32,
+        rows: 32,
+        fields: [
+            (name: "flux", init: GradientX(lo: 0.0, hi: 1.0),
+             dynamics: (diffusion: 0.05, relax_rate: 0.0, relax_to: 0.0)),
+            (name: "climate", init: Uniform(0.5),
+             dynamics: (diffusion: 0.0, relax_rate: 0.002, relax_to: 0.5)),
+        ],
+    ),
+)

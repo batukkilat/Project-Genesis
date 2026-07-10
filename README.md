@@ -45,6 +45,7 @@ cargo run -p genesis-headless --release -- run --config genesis.ron --rules pack
 cargo run -p genesis-headless --release -- run --load world.gens --ticks 5000
 cargo run -p genesis-headless --release -- branch --from world.gens --to fork.gens
 cargo run -p genesis-headless --release -- verify --config configs/env-gradient.ron --rules packs/bands.ron --actions scripts/terraform-west.ron --ticks 3000
+cargo run -p genesis-headless --release -- verify --config configs/full-stack.ron --rules packs/bands.ron --actions scripts/full-stack.ron --ticks 3000
 ```
 
 Determinism contract: same build + same platform + same seed/config/rules/actions ⇒ identical state hashes — regardless of thread count. Verified by `genesis verify` (two fresh runs + save/resume + single-thread, all compared) and the test suite. Current numbers: [BASELINES.md](BASELINES.md).

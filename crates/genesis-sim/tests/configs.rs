@@ -81,6 +81,48 @@ fn every_committed_config_is_deterministic() {
 }
 
 #[test]
+fn full_stack_pairing_assembles_and_replays() {
+    // configs/full-stack.ron + scripts/full-stack.ron are shipped as a
+    // *pair* (the kitchen-sink determinism scenario): the script's field
+    // indices only validate against the config at assembly, so the sweep
+    // tests above can't catch a mismatch between the two files. Run the
+    // pair past its last stamped action and check replay + the injected
+    // payloads arriving.
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let config = load_small(&root.join("configs/full-stack.ron"));
+    let script = genesis_config::ActionScript::load(&root.join("scripts/full-stack.ron")).unwrap();
+    let last_tick = script.actions.iter().map(|a| a.tick).max().unwrap();
+    let run = || {
+        let mut sim = Simulation::with_rules_and_actions(
+            &config,
+            genesis_sim::interact::RuleSet::default(),
+            script.clone(),
+        );
+        for _ in 0..=last_tick {
+            sim.tick();
+        }
+        (sim.state_hash(), sim.particle_count())
+    };
+    let (hash_a, count_a) = run();
+    let (hash_b, _) = run();
+    assert_eq!(hash_a, hash_b, "full-stack pairing replay diverged");
+    let payload_total: usize = script
+        .actions
+        .iter()
+        .map(|a| match a.action {
+            genesis_config::ActionKind::Impact { payload, .. }
+            | genesis_config::ActionKind::Rift { payload, .. } => payload.count as usize,
+            _ => 0,
+        })
+        .sum();
+    assert_eq!(
+        count_a,
+        400 + payload_total,
+        "impact + rift payloads must have arrived exactly"
+    );
+}
+
+#[test]
 fn lod_enabled_configs_are_thread_count_invariant() {
     for path in committed_configs() {
         let config = load_small(&path);

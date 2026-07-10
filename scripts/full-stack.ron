@@ -1,0 +1,48 @@
+// Companion script to configs/full-stack.ron: every player verb in one
+// replay-recorded session — field set/add (one region crossing nothing,
+// one authored as the two rects of a seam-wrapping brush stroke), an
+// asteroid impact, and a tectonic rift, with two verbs sharing tick 900
+// to exercise same-tick drain order.
+(
+    actions: [
+        // Terraform: raise the flux band mid-run; diffusion then smears it.
+        (
+            tick: 300,
+            action: FieldSet(field: 0, region: (x0: 256.0, y0: 256.0, x1: 512.0, y1: 768.0), value: 0.9),
+        ),
+        // A seam-wrapping edit, authored as two rects (Q-2026-07-08-B) —
+        // exactly what the field brush emits for a stroke at the west seam.
+        (
+            tick: 600,
+            action: FieldAdd(field: 1, region: (x0: 0.0, y0: 384.0, x1: 64.0, y1: 640.0), delta: 0.3),
+        ),
+        (
+            tick: 600,
+            action: FieldAdd(field: 1, region: (x0: 960.0, y0: 384.0, x1: 1024.0, y1: 640.0), delta: 0.3),
+        ),
+        // Same-tick impact + rift: drain order and independent payload
+        // streams both matter here.
+        (
+            tick: 900,
+            action: Impact(
+                x: 256.0, y: 256.0, radius: 48.0, impulse: 3.0, energy: 80.0,
+                payload: (count: 150,
+                    matter: (lo: 0.3, hi: 1.0), energy: (lo: 0.5, hi: 2.0),
+                    information: (lo: 0.0, hi: 0.3), speed: (lo: 0.2, hi: 1.0),
+                    spread: 20.0),
+            ),
+        ),
+        (
+            tick: 900,
+            action: Rift(
+                // Authored across the torus seam.
+                x0: 960.0, y0: 700.0, x1: 1088.0, y1: 700.0,
+                radius: 40.0, impulse: 2.0, energy: 60.0,
+                payload: (count: 100,
+                    matter: (lo: 0.2, hi: 0.8), energy: (lo: 0.5, hi: 1.5),
+                    information: (lo: 0.0, hi: 0.2), speed: (lo: 0.2, hi: 0.8),
+                    spread: 12.0),
+            ),
+        ),
+    ],
+)
