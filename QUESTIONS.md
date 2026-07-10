@@ -27,6 +27,14 @@ clearly recommendable or the fork touches something irreversible.
   2026-07-09; plan in docs/research/render-bootstrap.md. Adopted
   autonomously per the standing guidance — one option was clearly
   recommendable and nothing is irreversible (the seam is the hedge).
+- **Q-2026-07-10-A** (timeline branch representation) → RON sidecar record
+  above the engine (parent save path + state hash + fork tick, per-branch
+  action log); binary save format untouched, ancestry never replay
+  identity. Adopted autonomously per the standing guidance — two settled
+  precedents (labels above the engine; observer bookkeeping outside
+  identity) point the same way, and a sidecar is fully reversible, while
+  embedding ancestry in the .gens container would bump the format for pure
+  bookkeeping. Recorded in the decisions log 2026-07-10.
 - **Q-2026-07-09-A** (asteroid impact semantics) → adopted autonomously per
   the standing guidance: the 2026-07-06 decisions-log entry already fixed
   the shape (replay-recorded event; momentum + energy shock; payload as

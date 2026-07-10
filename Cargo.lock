@@ -596,6 +596,8 @@ dependencies = [
  "genesis-config",
  "genesis-core",
  "genesis-sim",
+ "ron",
+ "serde",
  "tracing",
 ]
 

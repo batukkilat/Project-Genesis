@@ -103,6 +103,22 @@ enum Command {
         #[arg(long, default_value_t = 0)]
         threads: usize,
     },
+    /// Fork a run: copy a save into an independent branch and write its
+    /// ancestry record (timeline branching, Q-2026-07-10-A). The child
+    /// inherits the exact state — pending actions included — and starts an
+    /// empty action log; ancestry never enters the engine or replay
+    /// identity.
+    Branch {
+        /// Parent save file (.gens).
+        #[arg(long)]
+        from: PathBuf,
+        /// Child save file to create.
+        #[arg(long)]
+        to: PathBuf,
+        /// Child branch record; defaults to `<to>.branch.ron`.
+        #[arg(long)]
+        record: Option<PathBuf>,
+    },
     /// Write a default config file to the given path.
     InitConfig { path: PathBuf },
     /// Write an example rule pack to the given path.
@@ -406,6 +422,28 @@ fn run(cli: Cli) -> Result<ExitCode, Box<dyn std::error::Error>> {
                 );
             }
             println!("state hash   {:#018x}", sim.state_hash());
+            Ok(ExitCode::SUCCESS)
+        }
+
+        Command::Branch { from, to, record } => {
+            let snap = genesis_persist::load_from_file(&from)?;
+            genesis_persist::save_to_file(&snap, &to)?;
+            let record_path = record.unwrap_or_else(|| {
+                let mut p = to.as_os_str().to_owned();
+                p.push(".branch.ron");
+                PathBuf::from(p)
+            });
+            let rec =
+                genesis_persist::branch::BranchRecord::fork_of(&from.display().to_string(), &snap);
+            rec.save(&record_path)?;
+            println!(
+                "forked {} at tick {} (state hash {:#018x})",
+                from.display(),
+                snap.tick,
+                snap.state_hash()
+            );
+            println!("child save   {}", to.display());
+            println!("child record {}", record_path.display());
             Ok(ExitCode::SUCCESS)
         }
 

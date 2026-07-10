@@ -60,6 +60,8 @@
 //! state_hash       u64      (canonical hash of the snapshot, integrity check)
 //! ```
 
+pub mod branch;
+
 use std::fmt;
 use std::io::{Read, Write};
 use std::path::Path;
