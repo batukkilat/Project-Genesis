@@ -12,6 +12,7 @@
 //! replay identity (docs/design/visuals.md, principle 4).
 
 pub mod brush;
+pub mod inspect;
 pub mod pacer;
 pub mod raster;
 

@@ -124,7 +124,14 @@ torus seam duplication, tier thresholds, aggregate math, mapping edges.
    to the same action scripted at construction). The Bevy half only
    wires mouse input to `stamp_actions`.
 5. **Observer panel + inspector,** panel-only annotations (owner decision
-   2026-07-08). Save/load/branch UI last.
+   2026-07-08). Save/load/branch UI last. *Logic half landed 2026-07-10*
+   (`inspect` module): `Camera::world_from_screen` (top-left origin, +y
+   down, matching the raster tiers), torus-metric `pick_particle`
+   (deterministic id tie-break), `structure_of` member lookup, and
+   `structure_focus` — a per-axis circular mean, so selecting a
+   seam-straddling structure centers the camera on the seam, never the
+   far side of the world. Panel content itself is the observer's own
+   data; the Bevy half only draws widgets around it.
 
 Steps 1 and the logic halves of 3–5 are verifiable on a headless box;
 steps 2's window and visual polish need a dev machine with a display —

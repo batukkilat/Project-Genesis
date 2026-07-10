@@ -10,6 +10,7 @@ edition.workspace = true
 [dependencies]
 genesis-core = { workspace = true }
 genesis-config = { workspace = true }
+genesis-observer = { workspace = true }
 genesis-sim = { workspace = true }
 serde = { workspace = true }
 ron = { workspace = true }

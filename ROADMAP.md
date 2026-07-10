@@ -228,7 +228,11 @@ ordered dithering, pure and byte-deterministic.
 1/2/4 seam-wrapped rects → ordinary `PlayerAction` records fed through
 the one scripted-action path (Q-2026-07-08-B), with validated live
 enqueue on the sim (Result, never panic; queue-mid-run bit-identical to
-the same action scripted, survives save/resume). Next: step 2 (Bevy app
+the same action scripted, survives save/resume).
+**Step 5 logic half landed 2026-07-10**: `inspect` module —
+screen→world transform, torus-metric particle picking, structure
+member lookup, and circular-mean structure focus (a seam-straddling
+structure centers the camera on the seam). Next: step 2 (Bevy app
 shell) needs a machine with a display for runtime verification —
 autonomous cloud sessions stop at the testable boundary; the step 3 GPU
 half (texture upload + integer upscale) rides along with it.
