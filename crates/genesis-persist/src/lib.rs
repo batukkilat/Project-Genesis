@@ -44,7 +44,10 @@
 //!                           kind 2 = impact (v13, Q-2026-07-09-A): x f32,
 //!                           y f32, radius f32, impulse f32, energy f32,
 //!                           payload count u32 + 4 ranges (lo f32, hi f32:
-//!                           matter, energy, information, speed) + spread f32)
+//!                           matter, energy, information, speed) + spread f32;
+//!                           kind 3 = rift (v14, Q-2026-07-10-C): x0 f32,
+//!                           y0 f32, x1 f32, y1 f32, then radius, impulse,
+//!                           energy and payload exactly like an impact)
 //! rule_count       u32      (v3: interaction rules joined replay identity)
 //! rules            rule_count * (28 f32 core (CompiledRule::fields order; v4
 //!                           appended bond action code + strength; v5
@@ -71,7 +74,7 @@ use genesis_sim::interact::{Bounds, CompiledRule, EnvBound};
 use genesis_sim::snapshot::{BondSnap, ParticleSnap, WorldSnapshot};
 
 pub const MAGIC: [u8; 4] = *b"GENS";
-pub const FORMAT_VERSION: u32 = 13;
+pub const FORMAT_VERSION: u32 = 14;
 
 #[derive(Debug)]
 pub enum SaveError {
@@ -213,6 +216,32 @@ pub fn save_to_writer(snap: &WorldSnapshot, w: &mut impl Write) -> Result<(), Sa
                 }
                 w.write_all(&payload.spread.to_le_bytes())?;
             }
+            ActionKind::Rift {
+                x0,
+                y0,
+                x1,
+                y1,
+                radius,
+                impulse,
+                energy,
+                payload,
+            } => {
+                w.write_all(&[3u8])?;
+                for v in [x0, y0, x1, y1, radius, impulse, energy] {
+                    w.write_all(&v.to_le_bytes())?;
+                }
+                w.write_all(&payload.count.to_le_bytes())?;
+                for range in [
+                    payload.matter,
+                    payload.energy,
+                    payload.information,
+                    payload.speed,
+                ] {
+                    w.write_all(&range.lo.to_le_bytes())?;
+                    w.write_all(&range.hi.to_le_bytes())?;
+                }
+                w.write_all(&payload.spread.to_le_bytes())?;
+            }
         }
     }
 
@@ -328,7 +357,39 @@ pub fn load_from_reader(r: &mut impl Read) -> Result<WorldSnapshot, SaveError> {
     for _ in 0..pending_count {
         let tick = read_u64(r)?;
         let code = read_u8(r)?;
-        let action = if code == 2 {
+        let action = if code == 3 {
+            let x0 = read_f32(r)?;
+            let y0 = read_f32(r)?;
+            let x1 = read_f32(r)?;
+            let y1 = read_f32(r)?;
+            let radius = read_f32(r)?;
+            let impulse = read_f32(r)?;
+            let energy = read_f32(r)?;
+            let count = read_u32(r)?;
+            let mut ranges = [genesis_config::Range::new(0.0, 0.0); 4];
+            for range in &mut ranges {
+                range.lo = read_f32(r)?;
+                range.hi = read_f32(r)?;
+            }
+            let spread = read_f32(r)?;
+            ActionKind::Rift {
+                x0,
+                y0,
+                x1,
+                y1,
+                radius,
+                impulse,
+                energy,
+                payload: genesis_config::PayloadSpec {
+                    count,
+                    matter: ranges[0],
+                    energy: ranges[1],
+                    information: ranges[2],
+                    speed: ranges[3],
+                    spread,
+                },
+            }
+        } else if code == 2 {
             let x = read_f32(r)?;
             let y = read_f32(r)?;
             let radius = read_f32(r)?;
@@ -785,6 +846,69 @@ mod tests {
             resumed.particle_count(),
             200 + 25,
             "the impact must actually have delivered its payload"
+        );
+    }
+
+    #[test]
+    fn pending_rift_survives_the_format() {
+        // Guards the v14 rift encoding (Q-2026-07-10-C): same contract as
+        // the impact test — bit-for-bit round-trip, identical future.
+        use genesis_config::{ActionKind, ActionScript, PayloadSpec, PlayerAction, Range};
+        use genesis_sim::interact::RuleSet;
+        let config = test_config();
+        let script = ActionScript {
+            actions: vec![PlayerAction {
+                tick: 50,
+                action: ActionKind::Rift {
+                    x0: 60.0,
+                    y0: 120.0,
+                    x1: 140.0,
+                    y1: 130.0,
+                    radius: 25.0,
+                    impulse: 2.0,
+                    energy: 8.0,
+                    payload: PayloadSpec {
+                        count: 25,
+                        matter: Range::new(0.3, 0.9),
+                        energy: Range::new(0.5, 1.5),
+                        information: Range::new(0.0, 0.2),
+                        speed: Range::new(0.2, 1.0),
+                        spread: 5.0,
+                    },
+                },
+            }],
+        };
+        let make =
+            || Simulation::with_rules_and_actions(&config, RuleSet::default(), script.clone());
+        let mut sim = make();
+        let mut uninterrupted = make();
+        for _ in 0..30 {
+            sim.tick();
+            uninterrupted.tick();
+        }
+        let snap = sim.snapshot();
+        assert_eq!(snap.pending_actions.len(), 1, "rift must still pend");
+
+        let mut bytes = Vec::new();
+        save_to_writer(&snap, &mut bytes).unwrap();
+        let back = load_from_reader(&mut bytes.as_slice()).unwrap();
+        assert_eq!(snap, back);
+        assert_eq!(snap.state_hash(), back.state_hash());
+
+        let mut resumed = Simulation::from_snapshot(&back);
+        for _ in 0..40 {
+            uninterrupted.tick();
+            resumed.tick();
+        }
+        assert_eq!(
+            uninterrupted.state_hash(),
+            resumed.state_hash(),
+            "resume diverged — the pending rift must fire identically"
+        );
+        assert_eq!(
+            resumed.particle_count(),
+            200 + 25,
+            "the rift must actually have delivered its payload"
         );
     }
 

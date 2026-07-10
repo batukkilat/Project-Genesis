@@ -105,6 +105,34 @@ pub enum ActionKind {
         energy: f32,
         payload: PayloadSpec,
     },
+    /// Tectonic event (Q-2026-07-10-C): an [`Impact`]-shaped shock whose
+    /// source is a world-coordinate *segment* instead of a point — the
+    /// mechanically honest v1 of the constitutional "tectonic events" verb.
+    /// Particles within `radius` of the segment (torus metric; the segment
+    /// vector is taken exactly as authored, so a segment may cross the seam)
+    /// are pushed perpendicularly away from it with linear falloff; the
+    /// declared energy splits across struck particles by falloff weight; the
+    /// payload spawns like a point impact at a uniformly drawn point of the
+    /// segment (upwelling). A degenerate segment (both endpoints equal)
+    /// behaves exactly like an impact.
+    ///
+    /// [`Impact`]: ActionKind::Impact
+    Rift {
+        x0: f32,
+        y0: f32,
+        x1: f32,
+        y1: f32,
+        /// Shock radius around the segment; farther particles are untouched.
+        radius: f32,
+        /// Peak momentum impulse (on the segment, falling linearly to 0 at
+        /// `radius`), applied perpendicularly away from the segment:
+        /// dv = impulse * falloff / matter.
+        impulse: f32,
+        /// Total energy deposited across struck particles, split
+        /// proportionally to falloff weight; lost when nobody is struck.
+        energy: f32,
+        payload: PayloadSpec,
+    },
 }
 
 impl ActionKind {
@@ -154,6 +182,35 @@ impl ActionKind {
                     if !v.is_finite() || v < 0.0 {
                         return Err(ConfigError::Invalid(format!(
                             "impact {name} must be finite and >= 0"
+                        )));
+                    }
+                }
+                payload.validate()?;
+            }
+            ActionKind::Rift {
+                x0,
+                y0,
+                x1,
+                y1,
+                radius,
+                impulse,
+                energy,
+                payload,
+            } => {
+                for (name, v) in [("x0", x0), ("y0", y0), ("x1", x1), ("y1", y1)] {
+                    if !v.is_finite() {
+                        return Err(ConfigError::Invalid(format!("rift {name} must be finite")));
+                    }
+                }
+                if !radius.is_finite() || radius <= 0.0 {
+                    return Err(ConfigError::Invalid(
+                        "rift radius must be finite and > 0".into(),
+                    ));
+                }
+                for (name, v) in [("impulse", impulse), ("energy", energy)] {
+                    if !v.is_finite() || v < 0.0 {
+                        return Err(ConfigError::Invalid(format!(
+                            "rift {name} must be finite and >= 0"
                         )));
                     }
                 }
@@ -413,6 +470,44 @@ mod tests {
         }
         .validate()
         .unwrap();
+    }
+
+    #[test]
+    fn rift_parses_and_rejects_like_an_impact() {
+        let script: ActionScript = ron::from_str(
+            "(actions: [
+                (tick: 500, action: Rift(
+                    x0: 32.0, y0: 64.0, x1: 96.0, y1: 64.0,
+                    radius: 20.0, impulse: 5.0, energy: 100.0,
+                    payload: (count: 50,
+                        matter: (lo: 0.2, hi: 0.8), energy: (lo: 1.0, hi: 3.0),
+                        information: (lo: 0.0, hi: 0.0), speed: (lo: 0.5, hi: 2.0),
+                        spread: 5.0),
+                )),
+            ])",
+        )
+        .unwrap();
+        script.validate().unwrap();
+
+        // A degenerate (point) segment is valid; bad numbers are not.
+        let ok = match script.actions[0].action {
+            ActionKind::Rift { payload, .. } => payload,
+            _ => panic!("wrong kind"),
+        };
+        let rift = |x1: f32, radius: f32, impulse: f32| ActionKind::Rift {
+            x0: 32.0,
+            y0: 64.0,
+            x1,
+            y1: 64.0,
+            radius,
+            impulse,
+            energy: 1.0,
+            payload: ok,
+        };
+        assert!(rift(32.0, 20.0, 5.0).validate().is_ok(), "point rift is ok");
+        assert!(rift(f32::NAN, 20.0, 5.0).validate().is_err());
+        assert!(rift(96.0, 0.0, 5.0).validate().is_err());
+        assert!(rift(96.0, 20.0, -1.0).validate().is_err());
     }
 
     #[test]

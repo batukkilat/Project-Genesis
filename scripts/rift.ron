@@ -1,0 +1,54 @@
+// Example tectonic event (Q-2026-07-10-C): a rift is an impact-shaped
+// player action whose shock source is a world-coordinate segment — the
+// mechanically honest v1 of the constitutional "tectonic events" verb.
+// Particles near the segment are pushed perpendicularly away (a shear/rift
+// opening); the payload is upwelling material drawn from quantity ranges,
+// spawned along the segment. Like impacts, matter/energy arrive from
+// outside the world by design, exactly as declared.
+//
+//   genesis run    --actions scripts/rift.ron
+//   genesis verify --actions scripts/rift.ron
+//
+// One long rift across the world's midsection, then a short cross-fault
+// splitting it later. A segment may be authored across the torus seam
+// (endpoints beyond the world edge wrap).
+(
+    actions: [
+        (
+            tick: 500,
+            action: Rift(
+                x0: 1024.0, y0: 2048.0,
+                x1: 3072.0, y1: 2048.0,
+                radius: 48.0,
+                impulse: 3.0,
+                energy: 150.0,
+                payload: (
+                    count: 300,
+                    matter: (lo: 0.4, hi: 1.2),
+                    energy: (lo: 1.0, hi: 3.0),
+                    information: (lo: 0.0, hi: 0.0),
+                    speed: (lo: 0.1, hi: 0.6),
+                    spread: 16.0,
+                ),
+            ),
+        ),
+        (
+            tick: 1500,
+            action: Rift(
+                x0: 2048.0, y0: 1536.0,
+                x1: 2048.0, y1: 2560.0,
+                radius: 32.0,
+                impulse: 2.0,
+                energy: 60.0,
+                payload: (
+                    count: 100,
+                    matter: (lo: 0.1, hi: 0.5),
+                    energy: (lo: 0.5, hi: 1.5),
+                    information: (lo: 0.0, hi: 0.2),
+                    speed: (lo: 0.5, hi: 1.5),
+                    spread: 12.0,
+                ),
+            ),
+        ),
+    ],
+)

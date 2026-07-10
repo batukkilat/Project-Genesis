@@ -175,8 +175,8 @@ impl EnvFields {
                 region,
                 delta,
             } => self.edit(field, &region, |v| v + delta),
-            genesis_config::ActionKind::Impact { .. } => {
-                unreachable!("impacts touch particles, not env fields — routed in the drain")
+            genesis_config::ActionKind::Impact { .. } | genesis_config::ActionKind::Rift { .. } => {
+                unreachable!("impacts/rifts touch particles, not env fields — routed in the drain")
             }
         }
     }

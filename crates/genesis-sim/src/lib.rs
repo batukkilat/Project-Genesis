@@ -118,6 +118,31 @@ fn apply_player_actions(
                 k as u64,
                 &mut next_id.0,
             ),
+            genesis_config::ActionKind::Rift {
+                x0,
+                y0,
+                x1,
+                y1,
+                radius,
+                impulse,
+                energy,
+                payload,
+            } => impact::apply_rift(
+                &mut store,
+                &geom,
+                x0,
+                y0,
+                x1,
+                y1,
+                radius,
+                impulse,
+                energy,
+                &payload,
+                stream_seed.0,
+                tick.0,
+                k as u64,
+                &mut next_id.0,
+            ),
         }
     }
 }
@@ -339,8 +364,10 @@ impl Simulation {
             let field = match a.action {
                 genesis_config::ActionKind::FieldSet { field, .. } => Some(field),
                 genesis_config::ActionKind::FieldAdd { field, .. } => Some(field),
-                // Impacts touch particles, not env fields — nothing to check.
+                // Impacts and rifts touch particles, not env fields —
+                // nothing to check.
                 genesis_config::ActionKind::Impact { .. } => None,
+                genesis_config::ActionKind::Rift { .. } => None,
             };
             if let Some(field) = field {
                 assert!(
@@ -417,6 +444,7 @@ impl Simulation {
             genesis_config::ActionKind::FieldSet { field, .. } => Some(field),
             genesis_config::ActionKind::FieldAdd { field, .. } => Some(field),
             genesis_config::ActionKind::Impact { .. } => None,
+            genesis_config::ActionKind::Rift { .. } => None,
         };
         if let Some(field) = field {
             let declared = self.world.resource::<EnvFields>().field_count();
@@ -1676,6 +1704,94 @@ mod tests {
         };
         assert_eq!(run(1), run(1), "scripted impacts not deterministic");
         assert_eq!(run(1), run(4), "impacts broke thread-count invariance");
+    }
+
+    fn rift_action(tick: u64, count: u32) -> genesis_config::PlayerAction {
+        genesis_config::PlayerAction {
+            tick,
+            action: genesis_config::ActionKind::Rift {
+                x0: 96.0,
+                y0: 128.0,
+                x1: 160.0,
+                y1: 128.0,
+                radius: 20.0,
+                impulse: 2.0,
+                energy: 5.0,
+                payload: genesis_config::PayloadSpec {
+                    count,
+                    matter: genesis_config::Range::new(0.3, 0.9),
+                    energy: genesis_config::Range::new(0.5, 1.5),
+                    information: genesis_config::Range::new(0.0, 0.2),
+                    speed: genesis_config::Range::new(0.2, 1.0),
+                    spread: 6.0,
+                },
+            },
+        }
+    }
+
+    #[test]
+    fn scripted_rift_is_deterministic_resumes_and_hashes_while_pending() {
+        // The rift rides the exact impact machinery; this pins the three
+        // sim-level properties in one pass: thread-count invariance, a
+        // pending rift surviving save/resume bit-for-bit, and pending-rift
+        // replay identity (Q-2026-07-10-C).
+        let run = |threads: usize| {
+            let pool = rayon::ThreadPoolBuilder::new()
+                .num_threads(threads)
+                .build()
+                .unwrap();
+            pool.install(|| {
+                let make = || {
+                    Simulation::with_rules_and_actions(
+                        &test_config(),
+                        bonding_rules(),
+                        script(vec![rift_action(60, 25)]),
+                    )
+                };
+                let mut a = make();
+                let mut b = make();
+                for _ in 0..40 {
+                    a.tick();
+                    b.tick();
+                }
+                let snap = b.snapshot();
+                assert_eq!(snap.pending_actions.len(), 1, "rift must still pend");
+                let mut resumed = Simulation::from_snapshot(&snap);
+                for _ in 0..40 {
+                    a.tick();
+                    resumed.tick();
+                }
+                assert_eq!(
+                    a.state_hash(),
+                    resumed.state_hash(),
+                    "resume diverged — a pending rift must fire identically"
+                );
+                a.state_hash()
+            })
+        };
+        assert_eq!(run(1), run(4), "rifts broke thread-count invariance");
+
+        // Pending replay identity: a queued rift is a different universe
+        // from tick 0, and every parameter matters.
+        let bare = Simulation::new(&test_config()).state_hash();
+        let queued = Simulation::with_rules_and_actions(
+            &test_config(),
+            RuleSet::default(),
+            script(vec![rift_action(1000, 10)]),
+        )
+        .state_hash();
+        let mut other = rift_action(1000, 10);
+        if let genesis_config::ActionKind::Rift { x1, .. } = &mut other.action {
+            *x1 += 1.0;
+        }
+        let queued_other = Simulation::with_rules_and_actions(
+            &test_config(),
+            RuleSet::default(),
+            script(vec![other]),
+        )
+        .state_hash();
+        assert_ne!(bare, queued, "a pending rift must be replay identity");
+        assert_ne!(queued, queued_other, "every rift parameter is identity");
     }
 
     #[test]

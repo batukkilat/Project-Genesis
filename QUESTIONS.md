@@ -42,34 +42,6 @@ B alone reads as rotation only by convention. No option is clearly
 recommendable without deciding how much non-inertial physics the
 constitution's "Actual Physics" mode tolerates. **Parked.**
 
-## Q-2026-07-10-C — tectonic events: what do they do?
-
-**Context.** "Tectonic events" is a constitutional player verb; nothing
-in the engine models solid substrate, plates, or terrain — there is no
-height, no ground, only particles and env fields. The verb needs a
-mechanically-honest v1.
-
-**Options.**
-- **A — line-source impact.** A recorded action like `Impact`, but the
-  shock source is a world-coordinate *segment* instead of a point:
-  momentum impulse perpendicular to the segment (shear/rift), energy
-  deposit with distance falloff, optional particle payload (upwelling).
-  Reuses the entire impact machinery (falloff weights, order-free payload
-  RNG, pending-hash rules); a rift is authorable today.
-- **B — env-field rewrite event.** A tectonic event edits env fields in
-  a band (e.g. steps a "temperature-like" field along a line), letting
-  rules react — no direct particle touch. Weaker mechanically; mostly
-  achievable already with FieldSet regions.
-- **C — A + B composed.** One recorded event carrying both a line shock
-  and a set of band field edits.
-
-**Recommendation.** A is nearly clearly-recommendable (pure
-generalization of a shipped, settled system; conserves exactly like
-impacts; no new concepts below the Observer). Parked only because the
-verb is constitutional surface area and cheap to confirm — if a session
-needs it before an answer arrives, A is the option to adopt per the
-standing guidance.
-
 ## Q-2026-07-10-D — magnetic field: blocked on a radiation quantity
 
 **Context.** The constitutional verb list includes "magnetic field", and

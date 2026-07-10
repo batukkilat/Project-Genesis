@@ -202,6 +202,37 @@ impl WorldSnapshot {
                         }
                         h.write_f32(payload.spread);
                     }
+                    // A pending rift, likewise (Q-2026-07-10-C).
+                    ActionKind::Rift {
+                        x0,
+                        y0,
+                        x1,
+                        y1,
+                        radius,
+                        impulse,
+                        energy,
+                        payload,
+                    } => {
+                        h.write_u64(3);
+                        h.write_f32(x0);
+                        h.write_f32(y0);
+                        h.write_f32(x1);
+                        h.write_f32(y1);
+                        h.write_f32(radius);
+                        h.write_f32(impulse);
+                        h.write_f32(energy);
+                        h.write_u64(payload.count as u64);
+                        for r in [
+                            payload.matter,
+                            payload.energy,
+                            payload.information,
+                            payload.speed,
+                        ] {
+                            h.write_f32(r.lo);
+                            h.write_f32(r.hi);
+                        }
+                        h.write_f32(payload.spread);
+                    }
                 }
             }
         }
