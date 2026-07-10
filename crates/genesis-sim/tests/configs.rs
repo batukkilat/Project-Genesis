@@ -123,6 +123,70 @@ fn full_stack_pairing_assembles_and_replays() {
 }
 
 #[test]
+fn full_stack_pairing_survives_threads_and_mid_script_resume() {
+    // The scenario's whole point is cross-feature interaction — rifts and
+    // impacts landing mid-LOD-stride on a dynamic env — so determinism must
+    // hold where those features can actually disagree: across thread counts
+    // and across a save taken while actions are still pending (night review
+    // 2026-07-10; the replay test above covers neither).
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let config = load_small(&root.join("configs/full-stack.ron"));
+    let script = genesis_config::ActionScript::load(&root.join("scripts/full-stack.ron")).unwrap();
+    let last_tick = script.actions.iter().map(|a| a.tick).max().unwrap();
+    let split = script.actions.iter().map(|a| a.tick).min().unwrap() + 1;
+    assert!(split < last_tick, "script needs actions on distinct ticks");
+
+    let fresh = |threads: usize| {
+        let pool = rayon::ThreadPoolBuilder::new()
+            .num_threads(threads)
+            .build()
+            .unwrap();
+        pool.install(|| {
+            let mut sim = Simulation::with_rules_and_actions(
+                &config,
+                genesis_sim::interact::RuleSet::default(),
+                script.clone(),
+            );
+            for _ in 0..=last_tick {
+                sim.tick();
+            }
+            sim.state_hash()
+        })
+    };
+    let reference = fresh(1);
+    assert_eq!(
+        reference,
+        fresh(4),
+        "full-stack pairing broke thread invariance"
+    );
+
+    // Save after the first action applied but with later ones pending; the
+    // resumed run must land on the identical final state.
+    let mut sim = Simulation::with_rules_and_actions(
+        &config,
+        genesis_sim::interact::RuleSet::default(),
+        script.clone(),
+    );
+    for _ in 0..split {
+        sim.tick();
+    }
+    let snap = sim.snapshot();
+    assert!(
+        !snap.pending_actions.is_empty(),
+        "the save must capture a non-empty pending queue"
+    );
+    let mut resumed = Simulation::from_snapshot(&snap);
+    for _ in split..=last_tick {
+        resumed.tick();
+    }
+    assert_eq!(
+        reference,
+        resumed.state_hash(),
+        "full-stack pairing broke mid-script save/resume"
+    );
+}
+
+#[test]
 fn lod_enabled_configs_are_thread_count_invariant() {
     for path in committed_configs() {
         let config = load_small(&path);

@@ -156,7 +156,10 @@ const BAYER4: [[f32; 4]; 4] = [
 ];
 
 fn bayer_offset(px: u32, py: u32) -> f32 {
-    BAYER4[(py % 4) as usize][(px % 4) as usize] / 16.0 - 0.5
+    // +0.5 centers the 0..=15 matrix values in their thresholds so the
+    // offsets are symmetric about zero (mean-preserving dithering);
+    // `v/16 - 0.5` alone would bias every cell darker by 1/32.
+    (BAYER4[(py % 4) as usize][(px % 4) as usize] + 0.5) / 16.0 - 0.5
 }
 
 /// The world-rect a heatmap raster covers: origin (west/north edge, world

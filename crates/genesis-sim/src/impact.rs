@@ -161,20 +161,47 @@ pub fn apply_rift(
     let n = store.len();
     let mut hits: Vec<(u64, usize, f32, f32, f32)> = Vec::new();
     for i in 0..n {
-        // Offset from the segment start to the particle, torus-shortest;
-        // the closest segment point comes from projecting onto the literal
-        // segment vector. Beyond the ends this degrades to point distance
-        // from the nearest endpoint, exactly like an impact there.
+        // Offset from the segment start to the particle; the closest
+        // segment point comes from projecting onto the literal segment
+        // vector. Beyond the ends this degrades to point distance from
+        // the nearest endpoint, exactly like an impact there.
+        //
+        // `torus::delta` folds the offset to the torus-shortest wrap, but
+        // the projection needs the offset relative to the *unfolded*
+        // segment: for a particle whose along-segment offset from the
+        // start exceeds half the world (possible once segment length +
+        // radius does), the folded offset flips sign, `t` clamps to the
+        // wrong end, and the far end-cap is silently missed (the shipped
+        // rift.ron authors exactly a half-world segment). The true torus
+        // distance to the segment is the minimum over the 3×3 wrap copies
+        // of the offset — sufficient for any segment up to a full world
+        // period per axis (validated at assembly). The folded (0,0) copy
+        // is evaluated first with the original expression and ties keep
+        // it, so every safe segment reproduces its old bits exactly.
         let rx = torus::delta(ax, store.px[i], geom.world_w);
         let ry = torus::delta(ay, store.py[i], geom.world_h);
-        let t = if seg_len2 > 0.0 {
-            ((rx * sx + ry * sy) / seg_len2).clamp(0.0, 1.0)
-        } else {
-            0.0
+        let project = |cx: f32, cy: f32| {
+            let t = if seg_len2 > 0.0 {
+                ((cx * sx + cy * sy) / seg_len2).clamp(0.0, 1.0)
+            } else {
+                0.0
+            };
+            let dx = cx - t * sx;
+            let dy = cy - t * sy;
+            (dx * dx + dy * dy, dx, dy)
         };
-        let dx = rx - t * sx;
-        let dy = ry - t * sy;
-        let d2 = dx * dx + dy * dy;
+        let (mut d2, mut dx, mut dy) = project(rx, ry);
+        for ky in [-1.0f32, 0.0, 1.0] {
+            for kx in [-1.0f32, 0.0, 1.0] {
+                if kx == 0.0 && ky == 0.0 {
+                    continue;
+                }
+                let (c_d2, c_dx, c_dy) = project(rx + kx * geom.world_w, ry + ky * geom.world_h);
+                if c_d2 < d2 {
+                    (d2, dx, dy) = (c_d2, c_dx, c_dy);
+                }
+            }
+        }
         if d2 >= radius * radius {
             continue;
         }
@@ -820,6 +847,80 @@ mod tests {
         shuffled.swap(3, 20);
         shuffled.swap(7, 29);
         assert_eq!(run(&forward), run(&shuffled));
+    }
+
+    #[test]
+    fn rift_end_caps_are_symmetric_at_half_world_length() {
+        // Regression (night review 2026-07-10): the folded torus offset
+        // flipped sign for particles past the far end of a segment once
+        // segment length + radius exceeded half the world, so the far
+        // end-cap was silently skipped while the near one was shocked —
+        // shipped rift.ron authors exactly a half-world segment. Segment
+        // (10,50)→(60,50), length 50 = world/2, radius 8: particles 6
+        // beyond each end must take the same endpoint shock.
+        let geom = GridGeom::new(100.0, 100.0, 10.0);
+        let mut s = ParticleStore::default();
+        s.push(0, 4.0, 50.0, 0.0, 0.0, 1.0, 0.0, 0.0); // 6 before the start
+        s.push(1, 66.0, 50.0, 0.0, 0.0, 1.0, 0.0, 0.0); // 6 past the far end
+        s.canonicalize(&geom);
+        let mut next_id = 2;
+        apply_rift(
+            &mut s,
+            &geom,
+            10.0,
+            50.0,
+            60.0,
+            50.0,
+            8.0,
+            4.0,
+            10.0,
+            &payload(0),
+            7,
+            3,
+            0,
+            &mut next_id,
+        );
+        let at = |id: u64| s.id.iter().position(|&x| x == id).unwrap();
+        let (i0, i1) = (at(0), at(1));
+        // Both end-caps: w = 1 - 6/8 = 0.25, dv = 4*0.25/1 = 1, outward.
+        assert!((s.vx[i0] + 1.0).abs() < 1e-5, "near cap vx = {}", s.vx[i0]);
+        assert!((s.vx[i1] - 1.0).abs() < 1e-5, "far cap vx = {}", s.vx[i1]);
+        assert_eq!(s.vy[i0], 0.0);
+        assert_eq!(s.vy[i1], 0.0);
+        // Symmetric weights split the energy evenly.
+        assert!((s.energy[i0] - 5.0).abs() < 1e-4);
+        assert!((s.energy[i1] - 5.0).abs() < 1e-4);
+    }
+
+    #[test]
+    fn rift_longer_than_half_the_world_shocks_its_whole_length() {
+        // A 70-long segment in a 100 world: a particle 5 past the far end
+        // folds its offset to -25 and used to be measured against the
+        // start; it must be struck like an endpoint impact.
+        let geom = GridGeom::new(100.0, 100.0, 10.0);
+        let mut s = ParticleStore::default();
+        s.push(0, 75.0, 50.0, 0.0, 0.0, 1.0, 0.0, 0.0);
+        s.canonicalize(&geom);
+        let mut next_id = 1;
+        apply_rift(
+            &mut s,
+            &geom,
+            0.0,
+            50.0,
+            70.0,
+            50.0,
+            10.0,
+            2.0,
+            0.0,
+            &payload(0),
+            7,
+            3,
+            0,
+            &mut next_id,
+        );
+        // d = 5 from the far endpoint, w = 0.5, dv = 1 outward (+x).
+        assert!((s.vx[0] - 1.0).abs() < 1e-5, "vx = {}", s.vx[0]);
+        assert_eq!(s.vy[0], 0.0);
     }
 
     #[test]

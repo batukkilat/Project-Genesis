@@ -151,7 +151,17 @@ whole energy deposit.
 segment (perpendicular impulse, falloff-weighted energy, payload
 upwelling along the line), every impact determinism invariant intact;
 `scripts/rift.ron` verifies DETERMINISTIC across fresh/resume/
-thread-count.
+thread-count. **Hardened 2026-07-10 (night review):** the shock
+projection used the torus-*folded* offset from the segment start, so
+once segment length + radius exceeded half the world the far end-cap
+was silently skipped (rift.ron authors exactly a half-world segment);
+the projection now takes the true torus minimum over adjacent world
+copies — safe segments keep their exact bits, and a segment spanning
+more than one world period per axis is rejected at both intake paths.
+Programmatically built scripts are now structurally validated at
+assembly like live-queued actions (one acceptance boundary), and the
+full-stack scenario pairing is additionally pinned across thread
+counts and a mid-script save/resume.
 
 Remaining Phase 4 work: rotation and magnetic field verbs (design forks
 parked 2026-07-10 as Q-2026-07-10-B/D in QUESTIONS.md with options and
@@ -248,7 +258,12 @@ structure centers the camera on the seam).
 engine, never replay identity) + `genesis branch` — fork a save into an
 independent branch whose untouched continuation is bit-identical to the
 parent's and whose own actions diverge it alone. The UI half (fork
-button, timeline tree) rides with step 2+. Next: step 2 (Bevy app
+button, timeline tree) rides with step 2+. **Hardened 2026-07-10
+(night review):** forking now lives in the library as
+`BranchRecord::fork_save` (CLI and future UI share it) and refuses to
+overwrite an existing child save or record — overwriting silently
+destroyed that branch's state and action log, and `--from X --to X`
+wrote a cyclic ancestry record. Next: step 2 (Bevy app
 shell) needs a machine with a display for runtime verification —
 autonomous cloud sessions stop at the testable boundary; the step 3 GPU
 half (texture upload + integer upscale) rides along with it.

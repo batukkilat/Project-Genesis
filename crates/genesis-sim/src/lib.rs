@@ -201,6 +201,47 @@ pub struct Simulation {
     schedule: Schedule,
 }
 
+/// World-dependent action checks, shared by construction and live queueing
+/// so the two paths accept exactly the same actions (one representation,
+/// one acceptance boundary — Q-2026-07-08-B). Structural checks live in
+/// [`ActionKind::validate`], which needs no world.
+///
+/// A rift segment may not span more than one world period per axis: the
+/// shock projection resolves torus wrapping over adjacent world copies,
+/// which covers any segment up to a full period; a longer "segment" would
+/// re-cover ground it already shocked and has no honest torus reading.
+///
+/// [`ActionKind::validate`]: genesis_config::ActionKind::validate
+fn check_action_against_world(
+    action: &genesis_config::ActionKind,
+    declared_fields: usize,
+    world_w: f32,
+    world_h: f32,
+) -> Result<(), ConfigError> {
+    match *action {
+        genesis_config::ActionKind::FieldSet { field, .. }
+        | genesis_config::ActionKind::FieldAdd { field, .. } => {
+            if field as usize >= declared_fields {
+                return Err(ConfigError::Invalid(format!(
+                    "action references env field {field} but the config declares \
+                     {declared_fields} field(s)"
+                )));
+            }
+        }
+        // An impact is a point: torus wrapping is unambiguous.
+        genesis_config::ActionKind::Impact { .. } => {}
+        genesis_config::ActionKind::Rift { x0, y0, x1, y1, .. } => {
+            if (x1 - x0).abs() > world_w || (y1 - y0).abs() > world_h {
+                return Err(ConfigError::Invalid(format!(
+                    "rift segment ({x0}, {y0}) → ({x1}, {y1}) spans more than one \
+                     world period ({world_w} × {world_h}) per axis"
+                )));
+            }
+        }
+    }
+    Ok(())
+}
+
 impl Simulation {
     /// Fresh simulation with no interaction rules.
     pub fn new(config: &SimConfig) -> Self {
@@ -354,6 +395,13 @@ impl Simulation {
         // Stable sort: script order breaks ties within a tick (Q-2026-07-08-B).
         actions.sort_by_key(|a| a.tick);
         for (i, a) in actions.iter().enumerate() {
+            // Structural validity first: script loading already validated,
+            // but a programmatically built script must meet the same bar as
+            // a live-queued action (one representation, one acceptance
+            // boundary — Q-2026-07-08-B).
+            if let Err(e) = a.action.validate() {
+                panic!("action {i} is structurally invalid: {e}");
+            }
             assert!(
                 a.tick >= tick.0,
                 "action {i} is stamped for tick {} but the simulation is at tick {} — \
@@ -361,20 +409,13 @@ impl Simulation {
                 a.tick,
                 tick.0
             );
-            let field = match a.action {
-                genesis_config::ActionKind::FieldSet { field, .. } => Some(field),
-                genesis_config::ActionKind::FieldAdd { field, .. } => Some(field),
-                // Impacts and rifts touch particles, not env fields —
-                // nothing to check.
-                genesis_config::ActionKind::Impact { .. } => None,
-                genesis_config::ActionKind::Rift { .. } => None,
-            };
-            if let Some(field) = field {
-                assert!(
-                    (field as usize) < env.field_count(),
-                    "action {i} references env field {field} but the config declares {} field(s)",
-                    env.field_count()
-                );
+            if let Err(e) = check_action_against_world(
+                &a.action,
+                env.field_count(),
+                params.world_width,
+                params.world_height,
+            ) {
+                panic!("action {i}: {e}");
             }
         }
         let mut world = World::new();
@@ -440,20 +481,15 @@ impl Simulation {
                 action.tick
             )));
         }
-        let field = match action.action {
-            genesis_config::ActionKind::FieldSet { field, .. } => Some(field),
-            genesis_config::ActionKind::FieldAdd { field, .. } => Some(field),
-            genesis_config::ActionKind::Impact { .. } => None,
-            genesis_config::ActionKind::Rift { .. } => None,
-        };
-        if let Some(field) = field {
+        {
             let declared = self.world.resource::<EnvFields>().field_count();
-            if field as usize >= declared {
-                return Err(ConfigError::Invalid(format!(
-                    "action references env field {field} but the config declares \
-                     {declared} field(s)"
-                )));
-            }
+            let params = self.world.resource::<Params>();
+            check_action_against_world(
+                &action.action,
+                declared,
+                params.world_width,
+                params.world_height,
+            )?;
         }
         // Keep the queue sorted by stamped tick with arrival order breaking
         // ties — the same order a script with these actions would produce,
@@ -1927,6 +1963,47 @@ mod tests {
             RuleSet::default(),
             script(vec![set_action(10, 0.0, 128.0, 1.0)]),
         );
+    }
+
+    #[test]
+    #[should_panic(expected = "structurally invalid")]
+    fn structurally_invalid_scripted_action_is_rejected_at_assembly() {
+        // Script loading validates from disk, but a programmatically built
+        // script must meet the same bar as a live-queued action — one
+        // acceptance boundary (night review 2026-07-10): a NaN region would
+        // otherwise assemble silently and inject NaN at drain time.
+        let mut config = test_config();
+        config.env = env_with(vec![field(genesis_config::FieldInit::Uniform(0.0))]);
+        let _ = Simulation::with_rules_and_actions(
+            &config,
+            RuleSet::default(),
+            script(vec![set_action(10, f32::NAN, 128.0, 1.0)]),
+        );
+    }
+
+    #[test]
+    fn rift_spanning_more_than_one_world_period_is_rejected() {
+        // The shock projection resolves torus wrapping over adjacent world
+        // copies, which covers segments up to one period per axis; a longer
+        // "segment" has no honest torus reading and both intake paths must
+        // refuse it identically (test_config world is 256 × 256).
+        let mut over = rift_action(50, 0);
+        if let genesis_config::ActionKind::Rift { x0, x1, .. } = &mut over.action {
+            *x0 = 0.0;
+            *x1 = 300.0;
+        }
+        let mut sim = Simulation::new(&test_config());
+        let err = sim.queue_action(over).expect_err("must be refused live");
+        assert!(err.to_string().contains("world period"), "got: {err}");
+
+        let scripted = std::panic::catch_unwind(|| {
+            Simulation::with_rules_and_actions(
+                &test_config(),
+                RuleSet::default(),
+                script(vec![over]),
+            )
+        });
+        assert!(scripted.is_err(), "must be refused at assembly too");
     }
 
     #[test]

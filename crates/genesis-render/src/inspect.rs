@@ -54,19 +54,22 @@ pub struct PickHit {
 /// particles are sorted by id). A linear scan — inspector clicks are rare
 /// and the whole-world extraction pass already set that budget precedent.
 pub fn pick_particle(snap: &WorldSnapshot, x: f32, y: f32, max_dist: f32) -> Option<PickHit> {
-    let mut best: Option<PickHit> = None;
+    // Compare squared distances directly: re-squaring a stored sqrt is not
+    // an identity in f32, and the round-trip error could hand a tie (or a
+    // strictly farther particle in the error gap) to the higher id.
+    let mut best: Option<(u64, f32)> = None;
     for p in &snap.particles {
         let dx = torus::delta(x, p.pos_x, snap.world_width);
         let dy = torus::delta(y, p.pos_y, snap.world_height);
         let d2 = dx * dx + dy * dy;
-        if d2 <= max_dist * max_dist && best.is_none_or(|b| d2 < b.dist * b.dist) {
-            best = Some(PickHit {
-                id: p.id,
-                dist: d2.sqrt(),
-            });
+        if d2 <= max_dist * max_dist && best.is_none_or(|(_, b2)| d2 < b2) {
+            best = Some((p.id, d2));
         }
     }
-    best
+    best.map(|(id, d2)| PickHit {
+        id,
+        dist: d2.sqrt(),
+    })
 }
 
 /// The tracked structure containing a particle, if any. Structures never
