@@ -426,21 +426,18 @@ fn run(cli: Cli) -> Result<ExitCode, Box<dyn std::error::Error>> {
         }
 
         Command::Branch { from, to, record } => {
-            let snap = genesis_persist::load_from_file(&from)?;
-            genesis_persist::save_to_file(&snap, &to)?;
             let record_path = record.unwrap_or_else(|| {
                 let mut p = to.as_os_str().to_owned();
                 p.push(".branch.ron");
                 PathBuf::from(p)
             });
-            let rec =
-                genesis_persist::branch::BranchRecord::fork_of(&from.display().to_string(), &snap);
-            rec.save(&record_path)?;
+            let rec = genesis_persist::branch::BranchRecord::fork_save(&from, &to, &record_path)?;
+            let parent = rec.parent.as_ref().expect("a fork always has a parent");
             println!(
                 "forked {} at tick {} (state hash {:#018x})",
                 from.display(),
-                snap.tick,
-                snap.state_hash()
+                parent.tick,
+                parent.state_hash
             );
             println!("child save   {}", to.display());
             println!("child record {}", record_path.display());

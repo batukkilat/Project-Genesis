@@ -30,7 +30,12 @@ pub const BRANCH_FORMAT: u32 = 1;
 /// Where a branch came from.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ParentRef {
-    /// The parent branch's save file, as given at fork time.
+    /// The parent branch's save file, as given at fork time — recorded
+    /// verbatim, not canonicalized, so records stay portable alongside
+    /// their saves. Two forks must name the parent the same way to be
+    /// textually recognizable as siblings; the robust chain identity is
+    /// `state_hash`, and path resolution is the consumer's concern
+    /// (Phase 7 packaging).
     pub save: String,
     /// The parent's state hash at the fork — also this branch's starting
     /// hash, so a broken chain is detectable.
@@ -89,6 +94,40 @@ impl BranchRecord {
         let text = ron::ser::to_string_pretty(self, pretty)
             .map_err(|e| SaveError::Corrupt(e.to_string()))?;
         std::fs::write(path, text).map_err(SaveError::Io)
+    }
+
+    /// Fork `parent_save` into a new branch: copy the save to `child_save`
+    /// and write a fresh ancestry record at `record_path`. This is the
+    /// operation behind `genesis branch`, and the Phase 6 UI performs
+    /// exactly these steps.
+    ///
+    /// Refuses to overwrite an existing child save or record — a branch is
+    /// a *new* file, and overwriting one would silently destroy that
+    /// branch's state and its replay provenance (the action log). The same
+    /// check rejects a self-parent fork (`child == parent`): the parent
+    /// exists by definition.
+    pub fn fork_save(
+        parent_save: &Path,
+        child_save: &Path,
+        record_path: &Path,
+    ) -> Result<Self, SaveError> {
+        for path in [child_save, record_path] {
+            if path.exists() {
+                return Err(SaveError::Io(std::io::Error::new(
+                    std::io::ErrorKind::AlreadyExists,
+                    format!(
+                        "refusing to overwrite {} — a branch must be a new \
+                         file (delete it first to reuse the name)",
+                        path.display()
+                    ),
+                )));
+            }
+        }
+        let snap = crate::load_from_file(parent_save)?;
+        crate::save_to_file(&snap, child_save)?;
+        let record = BranchRecord::fork_of(&parent_save.display().to_string(), &snap);
+        record.save(record_path)?;
+        Ok(record)
     }
 
     pub fn validate(&self) -> Result<(), SaveError> {
@@ -251,6 +290,55 @@ mod tests {
             child.state_hash(),
             "an untouched fork must continue the parent's exact future"
         );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn fork_save_creates_the_child_and_never_overwrites_one() {
+        let dir = tmp_dir();
+        let config = small_config();
+        let mut parent = Simulation::new(&config);
+        for _ in 0..10 {
+            parent.tick();
+        }
+        let snap = parent.snapshot();
+        let parent_path = dir.join("parent.gens");
+        crate::save_to_file(&snap, &parent_path).unwrap();
+
+        let child_path = dir.join("child.gens");
+        let record_path = dir.join("child.gens.branch.ron");
+        let rec = BranchRecord::fork_save(&parent_path, &child_path, &record_path).unwrap();
+        assert_eq!(rec.parent.as_ref().unwrap().state_hash, snap.state_hash());
+        assert_eq!(
+            crate::load_from_file(&child_path).unwrap().state_hash(),
+            snap.state_hash(),
+            "the child save must be the parent's exact state"
+        );
+        assert_eq!(BranchRecord::load(&record_path).unwrap(), rec);
+
+        // The child now exists — with an action appended to its log, the
+        // record carries provenance that an overwrite would destroy.
+        let mut lived = rec.clone();
+        lived.actions.push(action(20, 1.0));
+        lived.save(&record_path).unwrap();
+        let err = BranchRecord::fork_save(&parent_path, &child_path, &record_path)
+            .expect_err("re-forking onto an existing branch must fail");
+        assert!(matches!(err, SaveError::Io(ref e)
+            if e.kind() == std::io::ErrorKind::AlreadyExists));
+        assert_eq!(
+            BranchRecord::load(&record_path).unwrap(),
+            lived,
+            "a refused fork must leave the existing record untouched"
+        );
+
+        // A self-parent fork is refused for the same reason: the "child"
+        // already exists (it is the parent).
+        let self_record = dir.join("parent.gens.branch.ron");
+        let err = BranchRecord::fork_save(&parent_path, &parent_path, &self_record)
+            .expect_err("self-parent fork must fail");
+        assert!(matches!(err, SaveError::Io(ref e)
+            if e.kind() == std::io::ErrorKind::AlreadyExists));
+        assert!(!self_record.exists(), "no record for a refused fork");
         std::fs::remove_dir_all(&dir).ok();
     }
 
