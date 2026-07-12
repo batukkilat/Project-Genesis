@@ -60,3 +60,24 @@ threads. For real GPU rendering run natively on Windows:
 DX12 (one-time setup commands in the script header).
 
 Determinism contract: same build + same platform + same seed/config/rules/actions ⇒ identical state hashes — regardless of thread count. Verified by `genesis verify` (two fresh runs + save/resume + single-thread, all compared) and the test suite. Current numbers: [BASELINES.md](BASELINES.md).
+
+## System requirements
+
+Grounded in the measured baselines ([BASELINES.md](BASELINES.md)); the
+simulation is CPU-bound and scales with cores (4.7× on 12 threads at 1M
+particles), the renderer is a light GPU consumer.
+
+|  | Minimum | Recommended |
+|---|---|---|
+| **Use** | Watch/play default worlds (10k–100k particles, real-time) | Research scale (1M–10M particles, warp) |
+| **OS** | Windows 10/11 (native or WSL2) or Linux x86_64 | Windows 11 / Linux; macOS should work (wgpu Metal) but is untested |
+| **CPU** | 4 cores | 12+ threads — 1M particles runs 12.4 ticks/s on 12 threads; more cores = more warp |
+| **RAM** | 8 GB | 16–32 GB — a 10M-particle world plus snapshot/sort scratch wants several GB to itself |
+| **GPU** | Any Vulkan/DX12/Metal device; falls back to software rendering (llvmpipe — works, eats CPU, app self-caps at 30 fps) | Dedicated GPU for the windowed app; headless needs none at all |
+| **Disk** | ~20 GB free for toolchain + build (release keeps debug symbols; the target dir grows large) | SSD — the drvfs `/mnt/c` path is slow on WSL, keep `CARGO_TARGET_DIR` on the Linux filesystem |
+| **Toolchain** | Rust 1.96.1 (pinned by rust-toolchain.toml; rustup installs it automatically) | same |
+
+Determinism is guaranteed per build + platform, so any machine reproduces its
+own runs exactly; matching hashes *across* machines is a non-goal (decisions
+log). Headless (`genesis-headless`) has zero GPU/display requirements — it runs
+in bare containers, which is how the 10M baselines were produced.
