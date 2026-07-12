@@ -2,9 +2,15 @@
 // replay-recorded session — field set/add (one region crossing nothing,
 // one authored as the two rects of a seam-wrapping brush stroke), an
 // asteroid impact, and a tectonic rift, with two verbs sharing tick 900
-// to exercise same-tick drain order.
+// to exercise same-tick drain order, all under a frame spin set at the
+// start (the shocks land in a rotating world).
 (
     actions: [
+        // Spin the world up before anything else happens (Q-2026-07-10-B).
+        (
+            tick: 100,
+            action: SpinSet(spin: 0.3),
+        ),
         // Terraform: raise the flux band mid-run; diffusion then smears it.
         (
             tick: 300,

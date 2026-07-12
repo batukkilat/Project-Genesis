@@ -176,6 +176,13 @@ pub fn forces(
 /// information is deliberately not conserved — copy actions create it, decay
 /// destroys it (decisions log, 2026-07-05). A zero rate multiplies by
 /// exactly 1.0 and is bit-neutral.
+///
+/// Frame spin (Q-2026-07-10-B): a non-zero `params.spin` rotates the
+/// post-kick velocity by `-2·spin·dt` — the Coriolis deflection of a frame
+/// rotating at angular velocity `spin`, applied as an exact rotation (the
+/// Boris-pusher precedent) rather than an explicit force term, so speed is
+/// preserved and the scheme is stable at any spin. Zero spin skips the
+/// rotation entirely and is bit-neutral.
 pub fn integrate(store: &mut ParticleStore, geom: &GridGeom, params: &PhysicsParams, dt: f32) {
     let ParticleStore {
         px,
@@ -193,6 +200,11 @@ pub fn integrate(store: &mut ParticleStore, geom: &GridGeom, params: &PhysicsPar
     let world_h = geom.world_h;
     // Config validation guarantees rate * dt <= 1, so the factor is in [0, 1].
     let decay_factor = 1.0 - params.information_decay * dt;
+    // Coriolis rotation angle for this tick. Computed once — every particle
+    // rotates by the identical (cos, sin) pair, keeping the pass a pure
+    // per-particle map (deterministic, thread-count invariant).
+    let spinning = params.spin != 0.0;
+    let (spin_sin, spin_cos) = (-2.0 * params.spin * dt).sin_cos();
     // Adaptive-detail gate: frozen particles keep their exact state — no
     // integration, no info decay — so they are bit-for-bit unchanged this
     // tick. Empty mask = LOD off = every particle integrates.
@@ -218,6 +230,11 @@ pub fn integrate(store: &mut ParticleStore, geom: &GridGeom, params: &PhysicsPar
                     let inv_m = 1.0 / m_c[k];
                     vx_c[k] += fx_c[k] * inv_m * dt;
                     vy_c[k] += fy_c[k] * inv_m * dt;
+                    if spinning {
+                        let (vx0, vy0) = (vx_c[k], vy_c[k]);
+                        vx_c[k] = vx0 * spin_cos - vy0 * spin_sin;
+                        vy_c[k] = vx0 * spin_sin + vy0 * spin_cos;
+                    }
                     px_c[k] = torus::wrap(px_c[k] + vx_c[k] * dt, world_w);
                     py_c[k] = torus::wrap(py_c[k] + vy_c[k] * dt, world_h);
                     if decay_factor != 1.0 {
@@ -241,6 +258,7 @@ mod tests {
             bond_rest_length: 3.0,
             information_decay: 0.0,
             information_max: 1e30,
+            spin: 0.0,
         }
     }
 
@@ -294,6 +312,47 @@ mod tests {
             (spring - expect).abs() < 1e-4,
             "got {spring}, want {expect}"
         );
+    }
+
+    #[test]
+    fn spin_rotates_velocity_and_preserves_speed() {
+        // Force-free particle under spin: velocity rotates by exactly
+        // -2*spin*dt per tick and its magnitude never changes (Coriolis does
+        // no work — the rotation is applied exactly, not as a force term).
+        let mut p = params();
+        p.spin = 0.7;
+        let dt = 1.0 / 60.0;
+        let geom = GridGeom::new(64.0, 64.0, p.interaction_radius);
+        let mut s = ParticleStore::default();
+        s.push(0, 32.0, 32.0, 3.0, 4.0, 1.0, 0.0, 0.0);
+        s.canonicalize(&geom);
+        integrate(&mut s, &geom, &p, dt);
+
+        let speed = (s.vx[0] * s.vx[0] + s.vy[0] * s.vy[0]).sqrt();
+        assert!((speed - 5.0).abs() < 1e-5, "speed drifted: {speed}");
+        let theta = -2.0 * p.spin * dt;
+        let (sin, cos) = theta.sin_cos();
+        let (ex, ey) = (3.0 * cos - 4.0 * sin, 3.0 * sin + 4.0 * cos);
+        assert!((s.vx[0] - ex).abs() < 1e-5, "vx {} want {ex}", s.vx[0]);
+        assert!((s.vy[0] - ey).abs() < 1e-5, "vy {} want {ey}", s.vy[0]);
+    }
+
+    #[test]
+    fn zero_spin_is_bit_neutral() {
+        // spin = 0.0 must take the no-rotation path: bit-identical to a
+        // build that predates the param.
+        let p = params();
+        assert_eq!(p.spin, 0.0);
+        let dt = 1.0 / 60.0;
+        let geom = GridGeom::new(64.0, 64.0, p.interaction_radius);
+        let mut s = ParticleStore::default();
+        s.push(0, 32.0, 32.0, 3.0, 4.0, 1.0, 0.0, 0.0);
+        s.canonicalize(&geom);
+        integrate(&mut s, &geom, &p, dt);
+        assert_eq!(s.vx[0], 3.0);
+        assert_eq!(s.vy[0], 4.0);
+        assert_eq!(s.px[0], 32.0 + 3.0 * dt);
+        assert_eq!(s.py[0], 32.0 + 4.0 * dt);
     }
 
     #[test]

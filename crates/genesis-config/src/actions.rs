@@ -133,6 +133,16 @@ pub enum ActionKind {
         energy: f32,
         payload: PayloadSpec,
     },
+    /// Set the world frame's angular velocity (the planet-rotation verb,
+    /// Q-2026-07-10-B): from its stamped tick on, every active particle
+    /// feels the Coriolis acceleration `2·spin·perp(v)`. `spin` is a physics
+    /// param in replay identity (when non-zero); setting it mid-run is state
+    /// like an applied field edit.
+    SpinSet {
+        /// New angular velocity, radians per simulated second, either sign;
+        /// 0 stops the rotation.
+        spin: f32,
+    },
 }
 
 impl ActionKind {
@@ -215,6 +225,11 @@ impl ActionKind {
                     }
                 }
                 payload.validate()?;
+            }
+            ActionKind::SpinSet { spin } => {
+                if !spin.is_finite() {
+                    return Err(ConfigError::Invalid("spin must be finite".into()));
+                }
             }
         }
         Ok(())

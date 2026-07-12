@@ -4,44 +4,6 @@ Design forks not settled in the ROADMAP decisions log. Work that depends on
 an entry here is blocked until the answer is recorded in the decisions log;
 everything else continues. Format: context, options, recommendation.
 
-## Q-2026-07-10-B — planet rotation: what is it in a 2D torus?
-
-**Context.** The constitution lists "planet rotation" among the player's
-environment verbs (rule 4); ROADMAP Phase 4 defers it until its system
-lands. On a 2D torus viewed top-down there is no rotation axis, so the
-verb needs a physical reading before it can be a system. Whatever is
-chosen becomes a physics/replay-identity change (new param, save format
-bump) and shapes what can emerge — this is an emergence-critical fork
-like information semantics was.
-
-**Options.**
-- **A — frame spin (Coriolis-style).** A `spin` physics param; every
-  particle gets the generic velocity-dependent acceleration
-  `a = 2·spin·perp(v)`. Player action `SpinSet(value)`. Generic (no Earth
-  assumption), cheap (one fused multiply in integrate), and it visibly
-  bends trajectories — vortices and shear bands can emerge. But it breaks
-  momentum conservation by design (a rotating frame is non-inertial), so
-  conservation accounting needs a carve-out, and time-reversal symmetry
-  of the kernel changes.
-- **B — insolation cycling.** Rotation = a periodic driver for env
-  fields: a config-declared oscillation (period in ticks, axis, phase)
-  that modulates a chosen field (the "day/night" reading). Pure env-layer
-  change (fields already exist; dynamics already hash conditionally); no
-  physics touch; but it silently reintroduces the *source* concept cut
-  from field dynamics v1, and rotation stops being felt by particles
-  directly.
-- **C — both, staged.** A as the Phase 4 verb (it is the mechanical
-  reading of "rotation"); B later as a generic field-oscillator when
-  content demands day/night — explicitly a field-dynamics extension, not
-  a rotation feature.
-
-**Recommendation (weak).** C's first half — A alone — is the honest
-mechanical reading, but the momentum-conservation carve-out contradicts
-"matter and energy conserved" instincts and deserves owner sign-off;
-B alone reads as rotation only by convention. No option is clearly
-recommendable without deciding how much non-inertial physics the
-constitution's "Actual Physics" mode tolerates. **Parked.**
-
 ## Q-2026-07-10-D — magnetic field: blocked on a radiation quantity
 
 **Context.** The constitutional verb list includes "magnetic field", and
@@ -68,6 +30,16 @@ clearly recommendable or the fork touches something irreversible.
 
 ## Resolved
 
+- **Q-2026-07-10-B** (planet rotation on a 2D torus) → option C staged,
+  **decided by the owner 2026-07-12** after a requested literature review
+  (docs/research/rotation.md): frame spin (option A) now — the geophysics
+  f-plane precedent; Coriolis does no work so energy conservation is
+  exact, and total momentum rotates at constant magnitude rather than
+  being lost (|P| stays an invariant). Applied as an exact velocity
+  rotation (Boris-pusher precedent), `spin` hashes only when non-zero,
+  save format v15, player verb `SpinSet`. Insolation cycling (option B)
+  stays a future field-dynamics oscillator, not a rotation feature.
+  Recorded in the decisions log 2026-07-12.
 - **Q-2026-07-06-A** (adaptive detail exactness) → Option A, recorded in
   the decisions log 2026-07-06. Phase 4 unblocked.
 - **Q-2026-07-06-B** (information overflow) → Option A, information-only

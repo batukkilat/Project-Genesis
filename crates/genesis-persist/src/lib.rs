@@ -6,7 +6,7 @@
 //!
 //! ```text
 //! magic            [u8; 4]  = b"GENS"
-//! format_version   u32      = 14
+//! format_version   u32      = 15
 //! engine_version   u16 len + utf-8 bytes (informational)
 //! tick             u64
 //! rng_state        u64
@@ -23,6 +23,8 @@
 //! bond_rest_length f32      (v4: bonds joined replay identity)
 //! information_decay f32     (v5: information semantics joined replay identity)
 //! information_max   f32      (v7: information overflow cap, Q-2026-07-06-B)
+//! spin             f32      (v15: frame spin, Q-2026-07-10-B; replay
+//!                           identity only when non-zero — see state_hash)
 //! lod_enabled      u8       (v8: adaptive-detail policy; replay identity
 //!                           only when enabled — see state_hash)
 //! lod_chunk_cells  u32      (v8)
@@ -47,7 +49,8 @@
 //!                           matter, energy, information, speed) + spread f32;
 //!                           kind 3 = rift (v14, Q-2026-07-10-C): x0 f32,
 //!                           y0 f32, x1 f32, y1 f32, then radius, impulse,
-//!                           energy and payload exactly like an impact)
+//!                           energy and payload exactly like an impact;
+//!                           kind 4 = spin_set (v15, Q-2026-07-10-B): spin f32)
 //! rule_count       u32      (v3: interaction rules joined replay identity)
 //! rules            rule_count * (28 f32 core (CompiledRule::fields order; v4
 //!                           appended bond action code + strength; v5
@@ -74,7 +77,7 @@ use genesis_sim::interact::{Bounds, CompiledRule, EnvBound};
 use genesis_sim::snapshot::{BondSnap, ParticleSnap, WorldSnapshot};
 
 pub const MAGIC: [u8; 4] = *b"GENS";
-pub const FORMAT_VERSION: u32 = 14;
+pub const FORMAT_VERSION: u32 = 15;
 
 #[derive(Debug)]
 pub enum SaveError {
@@ -132,6 +135,10 @@ pub fn save_to_writer(snap: &WorldSnapshot, w: &mut impl Write) -> Result<(), Sa
     w.write_all(&snap.bond_rest_length.to_le_bytes())?;
     w.write_all(&snap.information_decay.to_le_bytes())?;
     w.write_all(&snap.information_max.to_le_bytes())?;
+
+    // Frame spin (v15). Written unconditionally so the container stays
+    // self-describing; it enters replay identity only when non-zero.
+    w.write_all(&snap.spin.to_le_bytes())?;
 
     // LOD policy (v8). Written unconditionally so the container stays self-
     // describing; it enters replay identity only when enabled.
@@ -242,6 +249,10 @@ pub fn save_to_writer(snap: &WorldSnapshot, w: &mut impl Write) -> Result<(), Sa
                 }
                 w.write_all(&payload.spread.to_le_bytes())?;
             }
+            ActionKind::SpinSet { spin } => {
+                w.write_all(&[4u8])?;
+                w.write_all(&spin.to_le_bytes())?;
+            }
         }
     }
 
@@ -314,6 +325,7 @@ pub fn load_from_reader(r: &mut impl Read) -> Result<WorldSnapshot, SaveError> {
     let bond_rest_length = read_f32(r)?;
     let information_decay = read_f32(r)?;
     let information_max = read_f32(r)?;
+    let spin = read_f32(r)?;
 
     let lod_enabled = read_u8(r)? != 0;
     let lod_chunk_cells = read_u32(r)?;
@@ -357,7 +369,9 @@ pub fn load_from_reader(r: &mut impl Read) -> Result<WorldSnapshot, SaveError> {
     for _ in 0..pending_count {
         let tick = read_u64(r)?;
         let code = read_u8(r)?;
-        let action = if code == 3 {
+        let action = if code == 4 {
+            ActionKind::SpinSet { spin: read_f32(r)? }
+        } else if code == 3 {
             let x0 = read_f32(r)?;
             let y0 = read_f32(r)?;
             let x1 = read_f32(r)?;
@@ -508,6 +522,7 @@ pub fn load_from_reader(r: &mut impl Read) -> Result<WorldSnapshot, SaveError> {
         bond_rest_length,
         information_decay,
         information_max,
+        spin,
         lod,
         env_cols,
         env_rows,
@@ -620,6 +635,33 @@ mod tests {
         save_to_writer(&snap, &mut bytes).unwrap();
         let back = load_from_reader(&mut bytes.as_slice()).unwrap();
         assert_eq!(back.information_max, 12.5);
+        assert_eq!(snap, back);
+        assert_eq!(snap.state_hash(), back.state_hash());
+    }
+
+    #[test]
+    fn non_zero_spin_and_pending_spin_set_survive_the_format() {
+        // Guards the v15 header field and pending-action kind 4: a spinning
+        // world with a queued SpinSet must round-trip bit-for-bit and resume
+        // into the identical future (the stored state hash covers both, so a
+        // dropped field would trip the corruption check on load).
+        let mut config = test_config();
+        config.physics.spin = 0.35;
+        let mut sim = Simulation::new(&config);
+        sim.tick();
+        sim.queue_action(genesis_config::PlayerAction {
+            tick: 10,
+            action: ActionKind::SpinSet { spin: -0.1 },
+        })
+        .unwrap();
+        let snap = sim.snapshot();
+        assert_eq!(snap.spin, 0.35);
+        assert_eq!(snap.pending_actions.len(), 1);
+
+        let mut bytes = Vec::new();
+        save_to_writer(&snap, &mut bytes).unwrap();
+        let back = load_from_reader(&mut bytes.as_slice()).unwrap();
+        assert_eq!(back.spin, 0.35);
         assert_eq!(snap, back);
         assert_eq!(snap.state_hash(), back.state_hash());
     }

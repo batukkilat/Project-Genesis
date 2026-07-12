@@ -1,0 +1,28 @@
+// Example planet rotation (Q-2026-07-10-B): SpinSet sets the world frame's
+// angular velocity (radians per simulated second, either sign). From its
+// stamped tick on, every active particle feels the Coriolis deflection —
+// trajectories curve, and coherent vortices can emerge where straight-line
+// drift would have dispersed. Energy is untouched (the deflection does no
+// work); total momentum keeps its magnitude and rotates.
+//
+//   genesis run    --actions scripts/spin-up.ron
+//   genesis verify --actions scripts/spin-up.ron
+//
+// Spin up early, reverse later, stop at the end — three eras with distinct
+// dynamics in one run.
+(
+    actions: [
+        (
+            tick: 200,
+            action: SpinSet(spin: 0.4),
+        ),
+        (
+            tick: 2000,
+            action: SpinSet(spin: -0.4),
+        ),
+        (
+            tick: 3800,
+            action: SpinSet(spin: 0.0),
+        ),
+    ],
+)

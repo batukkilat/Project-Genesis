@@ -49,6 +49,10 @@ pub struct WorldSnapshot {
     pub bond_rest_length: f32,
     pub information_decay: f32,
     pub information_max: f32,
+    /// Frame spin (Q-2026-07-10-B). Part of replay identity only when
+    /// non-zero (a spin-0 world is byte-identical to a pre-spin world, so it
+    /// must keep its exact hash — see `state_hash`).
+    pub spin: f32,
     /// Adaptive-detail policy. Part of replay identity only when enabled (a
     /// disabled policy has no effect, so it must not perturb the hash — see
     /// `state_hash`).
@@ -98,6 +102,14 @@ impl WorldSnapshot {
         h.write_f32(self.bond_rest_length);
         h.write_f32(self.information_decay);
         h.write_f32(self.information_max);
+        // Frame spin enters replay identity only when non-zero: a spin-0
+        // world simulates byte-identically to one that predates the param,
+        // so it must hash identically (the LOD/env precedent). The tag keeps
+        // the block distinct from the other conditional blocks.
+        if self.spin != 0.0 {
+            h.write_u64(6);
+            h.write_f32(self.spin);
+        }
         // The adaptive-detail policy enters replay identity only when it
         // changes the universe. A disabled policy has no effect, so it
         // contributes nothing: a LOD-off run keeps the exact hash it had
@@ -232,6 +244,13 @@ impl WorldSnapshot {
                             h.write_f32(r.hi);
                         }
                         h.write_f32(payload.spread);
+                    }
+                    // A pending spin change is a different future
+                    // (Q-2026-07-10-B); once applied, the spin param above
+                    // carries it.
+                    ActionKind::SpinSet { spin } => {
+                        h.write_u64(4);
+                        h.write_f32(spin);
                     }
                 }
             }

@@ -81,13 +81,15 @@ fn advance_tick(mut tick: ResMut<Tick>) {
 /// applies before anything simulates, in queue order. Field edits touch env
 /// cells; impacts touch particles (shock + payload) — the pushed payload
 /// marks the store dirty, so the following canonicalize rebuilds the layout
-/// by full sort.
+/// by full sort; spin changes touch the physics params (the new spin is felt
+/// by this tick's integrate).
 #[allow(clippy::too_many_arguments)]
 fn apply_player_actions(
     mut pending: ResMut<Pending>,
     mut env: ResMut<EnvFields>,
     mut store: ResMut<ParticleStore>,
     mut next_id: ResMut<NextId>,
+    mut params: ResMut<Params>,
     geom: Res<GridGeom>,
     stream_seed: Res<StreamSeed>,
     tick: Res<Tick>,
@@ -143,6 +145,7 @@ fn apply_player_actions(
                 k as u64,
                 &mut next_id.0,
             ),
+            genesis_config::ActionKind::SpinSet { spin } => params.physics.spin = spin,
         }
     }
 }
@@ -230,6 +233,8 @@ fn check_action_against_world(
         }
         // An impact is a point: torus wrapping is unambiguous.
         genesis_config::ActionKind::Impact { .. } => {}
+        // Spin is a world-independent scalar; structural validation covers it.
+        genesis_config::ActionKind::SpinSet { .. } => {}
         genesis_config::ActionKind::Rift { x0, y0, x1, y1, .. } => {
             if (x1 - x0).abs() > world_w || (y1 - y0).abs() > world_h {
                 return Err(ConfigError::Invalid(format!(
@@ -331,6 +336,7 @@ impl Simulation {
                 bond_rest_length: snap.bond_rest_length,
                 information_decay: snap.information_decay,
                 information_max: snap.information_max,
+                spin: snap.spin,
             },
         };
         let mut store = ParticleStore::default();
@@ -575,6 +581,7 @@ impl Simulation {
             bond_rest_length: params.physics.bond_rest_length,
             information_decay: params.physics.information_decay,
             information_max: params.physics.information_max,
+            spin: params.physics.spin,
             lod,
             env_cols: env.cols,
             env_rows: env.rows,
@@ -2573,5 +2580,193 @@ mod tests {
             ((e1 - e0) / scale).abs() < 0.05,
             "energy drifted more than 5%: {e0} -> {e1}"
         );
+    }
+
+    // --- frame spin (Q-2026-07-10-B) ---
+
+    #[test]
+    fn spin_conserves_energy_and_momentum_magnitude() {
+        // Force-free spinning world: kinetic energy is exact (rotation does
+        // no work) and total momentum rotates at constant magnitude instead
+        // of being conserved componentwise — |P| is the invariant the
+        // decisions log promises (docs/research/rotation.md).
+        let mut config = test_config();
+        config.physics.repulsion = 0.0;
+        config.physics.attraction = 0.0;
+        config.physics.spin = 0.4;
+        let mut sim = Simulation::new(&config);
+
+        let momentum = |s: &WorldSnapshot| {
+            s.particles.iter().fold((0.0f64, 0.0f64), |(px, py), p| {
+                (
+                    px + p.matter as f64 * p.vel_x as f64,
+                    py + p.matter as f64 * p.vel_y as f64,
+                )
+            })
+        };
+        let kinetic = |s: &WorldSnapshot| {
+            s.particles
+                .iter()
+                .map(|p| {
+                    0.5 * p.matter as f64
+                        * (p.vel_x as f64 * p.vel_x as f64 + p.vel_y as f64 * p.vel_y as f64)
+                })
+                .sum::<f64>()
+        };
+
+        let before = sim.snapshot();
+        let (px0, py0) = momentum(&before);
+        let e0 = kinetic(&before);
+        let ticks = 500u64;
+        for _ in 0..ticks {
+            sim.tick();
+        }
+        let after = sim.snapshot();
+        let (px1, py1) = momentum(&after);
+        let e1 = kinetic(&after);
+
+        assert!(
+            ((e1 - e0) / e0.max(1.0)).abs() < 1e-4,
+            "kinetic energy drifted under pure spin: {e0} -> {e1}"
+        );
+        let (m0, m1) = (
+            (px0 * px0 + py0 * py0).sqrt(),
+            (px1 * px1 + py1 * py1).sqrt(),
+        );
+        assert!(
+            (m1 - m0).abs() / m0.max(1.0) < 1e-3,
+            "momentum magnitude drifted: {m0} -> {m1}"
+        );
+        // Direction advances by exactly the per-tick rotation, accumulated.
+        let theta = (-2.0 * config.physics.spin as f64 * config.dt() as f64) * ticks as f64;
+        let (ex, ey) = (
+            px0 * theta.cos() - py0 * theta.sin(),
+            px0 * theta.sin() + py0 * theta.cos(),
+        );
+        assert!(
+            ((px1 - ex).abs() + (py1 - ey).abs()) / m0.max(1.0) < 1e-2,
+            "momentum direction off: got ({px1}, {py1}), want ({ex}, {ey})"
+        );
+    }
+
+    #[test]
+    fn spin_is_replay_identity_only_when_nonzero() {
+        // Zero spin contributes nothing to the hash (a spin-0 world is
+        // byte-identical to a pre-spin world); a non-zero spin is a
+        // different universe from tick 0.
+        let base = Simulation::new(&test_config());
+        let mut spun_config = test_config();
+        spun_config.physics.spin = 0.25;
+        let spun = Simulation::new(&spun_config);
+        assert_eq!(base.snapshot().spin, 0.0);
+        assert_ne!(base.state_hash(), spun.state_hash());
+
+        // The conditional block really is keyed on the value, not the field.
+        let mut snap = base.snapshot();
+        let h0 = snap.state_hash();
+        snap.spin = 0.25;
+        assert_ne!(h0, snap.state_hash());
+        snap.spin = 0.0;
+        assert_eq!(h0, snap.state_hash());
+    }
+
+    #[test]
+    fn spin_set_scripted_and_live_match_bit_for_bit() {
+        let spin_set = |tick: u64, spin: f32| genesis_config::PlayerAction {
+            tick,
+            action: genesis_config::ActionKind::SpinSet { spin },
+        };
+
+        // Scripted path.
+        let mut scripted = Simulation::with_rules_and_actions(
+            &test_config(),
+            RuleSet::default(),
+            script(vec![spin_set(5, 0.6)]),
+        );
+        // Live path: identical record queued mid-run.
+        let mut live = Simulation::new(&test_config());
+        for _ in 0..3 {
+            scripted.tick();
+            live.tick();
+        }
+        live.queue_action(spin_set(5, 0.6)).unwrap();
+        // While pending, the queued action is replay identity: the two sims
+        // now agree (same state, same pending future).
+        assert_eq!(scripted.state_hash(), live.state_hash());
+        for _ in 0..7 {
+            scripted.tick();
+            live.tick();
+        }
+        assert_eq!(scripted.state_hash(), live.state_hash());
+        // Applied: the param carries the value (and hashes, being non-zero).
+        assert_eq!(scripted.snapshot().spin, 0.6);
+        assert_eq!(live.snapshot().spin, 0.6);
+        // And the spun run diverged from an action-free one.
+        let mut untouched = Simulation::new(&test_config());
+        for _ in 0..10 {
+            untouched.tick();
+        }
+        assert_ne!(untouched.state_hash(), live.state_hash());
+    }
+
+    #[test]
+    fn resume_with_spin_and_pending_spin_set_matches_uninterrupted() {
+        let spin_set = |tick: u64, spin: f32| genesis_config::PlayerAction {
+            tick,
+            action: genesis_config::ActionKind::SpinSet { spin },
+        };
+        let mut config = test_config();
+        config.physics.spin = 0.3;
+        let actions = vec![spin_set(8, -0.5)];
+
+        let mut uninterrupted = Simulation::with_rules_and_actions(
+            &config,
+            RuleSet::default(),
+            ActionScript {
+                actions: actions.clone(),
+            },
+        );
+        let mut saved = Simulation::with_rules_and_actions(
+            &config,
+            RuleSet::default(),
+            ActionScript { actions },
+        );
+        for _ in 0..5 {
+            uninterrupted.tick();
+            saved.tick();
+        }
+        // Save mid-run: spin active, SpinSet still pending.
+        let snap = saved.snapshot();
+        assert_eq!(snap.spin, 0.3);
+        assert_eq!(snap.pending_actions.len(), 1);
+        let mut resumed = Simulation::from_snapshot(&snap);
+        for _ in 0..10 {
+            uninterrupted.tick();
+            resumed.tick();
+        }
+        assert_eq!(uninterrupted.state_hash(), resumed.state_hash());
+        assert_eq!(resumed.snapshot().spin, -0.5);
+    }
+
+    #[test]
+    fn spinning_run_is_deterministic_and_thread_invariant() {
+        let mut config = test_config();
+        config.physics.spin = 0.5;
+        let run = |threads: usize| {
+            let pool = rayon::ThreadPoolBuilder::new()
+                .num_threads(threads)
+                .build()
+                .unwrap();
+            pool.install(|| {
+                let mut sim = Simulation::new(&config);
+                for _ in 0..50 {
+                    sim.tick();
+                }
+                sim.state_hash()
+            })
+        };
+        let h1 = run(1);
+        let h4 = run(4);
+        assert_eq!(h1, h4, "spin must be thread-count invariant");
     }
 }

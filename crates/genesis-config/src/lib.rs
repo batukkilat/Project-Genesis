@@ -70,6 +70,15 @@ pub struct PhysicsParams {
     /// uncapped. Part of replay identity: a different cap is a different
     /// universe.
     pub information_max: f32,
+    /// Angular velocity of the world frame (radians per simulated second,
+    /// either sign; 0 = no rotation). Rotation on a 2D torus is frame spin
+    /// (decisions log, Q-2026-07-10-B): every active particle feels the
+    /// Coriolis acceleration `2·spin·perp(v)`, applied in integrate as an
+    /// exact speed-preserving velocity rotation. Does no work, so energy
+    /// conservation is exact; total momentum rotates at constant magnitude
+    /// instead of being conserved componentwise. Part of replay identity
+    /// when non-zero.
+    pub spin: f32,
 }
 
 impl Default for PhysicsParams {
@@ -82,6 +91,7 @@ impl Default for PhysicsParams {
             bond_rest_length: 3.0,
             information_decay: 0.0,
             information_max: 1e30,
+            spin: 0.0,
         }
     }
 }
@@ -511,6 +521,12 @@ impl SimConfig {
             return Err(ConfigError::Invalid(
                 "information_max must be > 0 and finite".into(),
             ));
+        }
+        // Spin only needs to be finite: it is applied as an exact velocity
+        // rotation, which is unconditionally stable at any magnitude and
+        // meaningful in either direction.
+        if !p.spin.is_finite() {
+            return Err(ConfigError::Invalid("spin must be finite".into()));
         }
         // Per-tick decay factor must stay in [0, 1]: a rate above 1/dt would
         // flip information negative.

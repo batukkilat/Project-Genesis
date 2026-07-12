@@ -139,6 +139,7 @@ mod tests {
             bond_rest_length: 3.0,
             information_decay: 0.0,
             information_max: 1e30,
+            spin: 0.0,
             lod: Default::default(),
             env_cols: 0,
             env_rows: 0,
