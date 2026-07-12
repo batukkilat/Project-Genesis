@@ -286,6 +286,13 @@ verified under WSLg (llvmpipe software vulkan) on the default config
 (T3 heatmap), `--zoom 40` (T0 sprites + bonds), and
 configs/env-gradient.ron. Remaining Phase 6: observer/inspector panels,
 save/load/branch UI (step 5 Bevy half), visual polish on a real GPU.
+**User-guide plan parked 2026-07-12**: docs/design/guide.md — ten-chapter
+`docs/guide/` plan (install → tutorial → app/CLI references → authoring →
+actions/replay → saves/forks → Observer → performance), each chapter
+play-facing first with a *Technical notes* close. Chapters 1, 5–10 are
+writable now against shipped behavior; chapters 2–4 wait on the owner's
+Windows GPU test, which also decides whether a menu screen exists (that
+verdict reshapes onboarding — draft the tutorial chapter last).
 
 Deliverables:
 
@@ -294,6 +301,7 @@ Deliverables:
 - Environment-tool UI, time controls, Observer overlay (hypotheses, metrics, timelines).
 - Save/load/replay UI.
 - Timeline branching: fork a run into an independent save + player-action log with shared ancestry metadata.
+- User guide (`docs/guide/`): comprehensive, technical, copy-paste-runnable — install through authoring, replay, and Observer (plan: docs/design/guide.md).
 
 Exit criteria: full loop — empty planet, shape environment, run, observe, experiment — with no objectives and no loading screens in the common path.
 
