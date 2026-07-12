@@ -5,6 +5,7 @@ Priority order: 1 Correctness, 2 Determinism, 3 Maintainability, 4 Performance, 
 Read before working:
 - Prompts/MASTER_PROMPT.md — the constitution. Immutable rules. Wins all conflicts.
 - ROADMAP.md — canonical phased plan.
+- docs/PLAYBOOK.md — craft standards: replay-identity rules, decision process, testing bar. Cited precedents, not suggestions.
 - Prompts/spec/ — per-system specs.
 
 Rules:
