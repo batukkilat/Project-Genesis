@@ -51,4 +51,10 @@ cargo run -p genesis-render --release --features app --bin genesis-app -- --conf
 cargo run -p genesis-render --release --features app --bin genesis-app -- --smoke 120   # window smoke test
 ```
 
+Under WSLg the only adapter is llvmpipe (software Vulkan) — it works but renders
+on the CPU. The app caps itself at 30 fps (`--fps` to change; the simulation
+rate is cap-independent, the pacer just runs more ticks per frame) and drops to
+4 fps when the window is unfocused; `LP_NUM_THREADS=4` bounds llvmpipe's worker
+threads. For real GPU rendering run the app natively.
+
 Determinism contract: same build + same platform + same seed/config/rules/actions ⇒ identical state hashes — regardless of thread count. Verified by `genesis verify` (two fresh runs + save/resume + single-thread, all compared) and the test suite. Current numbers: [BASELINES.md](BASELINES.md).

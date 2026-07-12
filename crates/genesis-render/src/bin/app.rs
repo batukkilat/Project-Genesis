@@ -52,6 +52,11 @@ struct Args {
     /// Initial view width in world units (default: the whole world).
     #[arg(long)]
     zoom: Option<f32>,
+    /// Frame-rate cap (frames per second). The pacer keeps the simulation
+    /// rate honest at any cap — fewer frames just mean more ticks per frame.
+    /// Uncapped rendering on a software rasterizer cooks the CPU for nothing.
+    #[arg(long, default_value_t = 30.0)]
+    fps: f64,
 }
 
 /// The owned simulation — the only mutable simulation state in the app.
@@ -164,6 +169,18 @@ fn main() {
             }),
             ..default()
         }))
+        // Frame cap: winit waits out the remainder of the frame budget
+        // instead of redrawing flat-out. Presentation only — the pacer
+        // converts real elapsed time into ticks, so the simulation rate is
+        // cap-independent.
+        .insert_resource(bevy::winit::WinitSettings {
+            focused_mode: bevy::winit::UpdateMode::reactive(std::time::Duration::from_secs_f64(
+                1.0 / args.fps.max(1.0),
+            )),
+            unfocused_mode: bevy::winit::UpdateMode::reactive_low_power(
+                std::time::Duration::from_millis(250),
+            ),
+        })
         .insert_resource(ClearColor(Color::srgb(0.02, 0.02, 0.05)))
         .insert_resource(Sim(sim))
         .insert_resource(View {

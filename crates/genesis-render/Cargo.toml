@@ -38,9 +38,15 @@ bevy = { version = "0.19", optional = true, default-features = false, features =
     "mouse",
 ] }
 clap = { workspace = true, optional = true }
+# Feature-unification shim: bevy 0.19 compiles wgpu with vulkan/dx12/metal
+# only and forwards no `gles` feature. Naming wgpu here with `gles` adds the
+# GL(ES) backend to the one shared wgpu build, which is what reaches a real
+# GPU on WSLg (WGPU_BACKEND=gl → EGL → Mesa's GL-over-D3D12); without it the
+# only Linux adapter WSLg offers is llvmpipe software vulkan.
+wgpu = { version = "29", optional = true, default-features = false, features = ["gles"] }
 
 [features]
-app = ["dep:bevy", "dep:clap"]
+app = ["dep:bevy", "dep:clap", "dep:wgpu"]
 
 [[bin]]
 name = "genesis-app"
