@@ -3,10 +3,14 @@ name = "genesis-render"
 version.workspace = true
 edition.workspace = true
 
-# Step 1 of docs/research/render-bootstrap.md: the extraction core only —
-# pure functions from snapshot state to plain RenderFrame data, fully
-# headless. Bevy (window, GPU, sprites) arrives with step 2 and must never
-# be needed to build or test this layer.
+# The library is step 1 of docs/research/render-bootstrap.md: the extraction
+# core — pure functions from snapshot state to plain RenderFrame data, fully
+# headless, and it must never need Bevy to build or test.
+#
+# The windowed app (step 2) lives behind the `app` feature: full Bevy stays
+# out of `cargo test --workspace` and CI, and only a dev machine with a
+# display builds `genesis-app` (`cargo run -p genesis-render --features app
+# --bin genesis-app`).
 [dependencies]
 genesis-core = { workspace = true }
 genesis-config = { workspace = true }
@@ -14,3 +18,31 @@ genesis-observer = { workspace = true }
 genesis-sim = { workspace = true }
 serde = { workspace = true }
 ron = { workspace = true }
+
+# default-features = false: the defaults pull wayland, gamepad (gilrs),
+# audio (alsa), and clipboard backends that need system dev libraries
+# (pkg-config, libwayland-dev, libudev-dev, libasound2-dev). This set is 2D
+# sprites + gizmos + UI text over winit/X11 (X11 loads at runtime via dlopen,
+# no build-time system deps) — everything the shell draws with, nothing more.
+bevy = { version = "0.19", optional = true, default-features = false, features = [
+    "2d_bevy_render",
+    "ui_bevy_render",
+    "bevy_text",
+    "default_app",
+    "std",
+    "bevy_winit",
+    "x11",
+    "default_font",
+    "multi_threaded",
+    "keyboard",
+    "mouse",
+] }
+clap = { workspace = true, optional = true }
+
+[features]
+app = ["dep:bevy", "dep:clap"]
+
+[[bin]]
+name = "genesis-app"
+path = "src/bin/app.rs"
+required-features = ["app"]

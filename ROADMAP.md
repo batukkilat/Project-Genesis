@@ -265,10 +265,27 @@ button, timeline tree) rides with step 2+. **Hardened 2026-07-10
 `BranchRecord::fork_save` (CLI and future UI share it) and refuses to
 overwrite an existing child save or record — overwriting silently
 destroyed that branch's state and action log, and `--from X --to X`
-wrote a cyclic ancestry record. Next: step 2 (Bevy app
-shell) needs a machine with a display for runtime verification —
-autonomous cloud sessions stop at the testable boundary; the step 3 GPU
-half (texture upload + integer upscale) rides along with it.
+wrote a cyclic ancestry record.
+**Step 2 (Bevy app shell) landed 2026-07-12** on a desktop session with a
+display, plus the GPU half of step 3 and the input half of step 4:
+`genesis-app` (a bin in genesis-render behind the `app` feature — full
+Bevy 0.19 stays out of `cargo test --workspace`; a trimmed feature set
+avoids the wayland/gilrs/alsa system-dev-lib builds). Lockstep frame
+loop per the Q-2026-07-09-B decision: the app owns the `Simulation`,
+`WarpPacer` plans whole ticks from measured frame time, extraction
+produces the `RenderFrame` rendering consumes. T0/T1 sprite pool (one
+procedural soft-dot texture, mapping-tinted) + gizmo bond lines; T2/T3
+heatmaps rasterized by the step 3 logic half and uploaded to a
+nearest-sampled texture at 1/4 resolution (the integer-upscale pixel
+look); HUD with tick / target-vs-achieved ticks/s / starvation flag /
+tier. Input: wheel zoom, WASD/right-drag pan, space pause, 1–4 warp
+presets, and the left-drag field brush emitting replay-recorded
+`PlayerAction`s through `Simulation::queue_action` (one representation).
+`--smoke N` runs the real window N frames and prints tick + state hash —
+verified under WSLg (llvmpipe software vulkan) on the default config
+(T3 heatmap), `--zoom 40` (T0 sprites + bonds), and
+configs/env-gradient.ron. Remaining Phase 6: observer/inspector panels,
+save/load/branch UI (step 5 Bevy half), visual polish on a real GPU.
 
 Deliverables:
 

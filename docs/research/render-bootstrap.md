@@ -102,7 +102,14 @@ torus seam duplication, tier thresholds, aggregate math, mapping edges.
 2. **Bevy app shell.** Window, camera pan/zoom (bounded), frame loop
    ticking the owned `Simulation`, T0 sprites from `RenderFrame` via one
    soft-dot texture. Debug overlays first (visuals.md: they de-risk the
-   mapping pipeline before aesthetics).
+   mapping pipeline before aesthetics). *Landed 2026-07-12*:
+   `genesis-app` bin behind the `app` feature (workspace tests stay
+   Bevy-free), lockstep loop + pacer + extraction + sprite pool + gizmo
+   bonds + HUD honesty display, `--smoke N` window-runtime check
+   (verified under WSLg/llvmpipe). The step 3 GPU half (heatmap texture
+   upload, nearest-sampled 1/4-res integer upscale) and the step 4 input
+   half (wheel/pan/pause/warp keys, left-drag field brush →
+   `queue_action`) rode along as planned.
 3. **Heatmap tiers + pixel look.** T2/T3 textures from aggregates,
    low-res offscreen target + integer upscale + dither. *Logic half landed
    2026-07-09* (`raster` module): RON palette ramps (`palettes/`),
