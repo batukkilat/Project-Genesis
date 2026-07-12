@@ -307,6 +307,48 @@ Exit criteria: full loop — empty planet, shape environment, run, observe, expe
 
 Non-goals: AI narration.
 
+## Phase 6.5 — The experiment loop (owner-approved 2026-07-12, runs alongside Phase 6)
+
+Goal: turn the telescope. The engine is built; the open risk is that the
+shipped physics + rule packs plateau at "blobs, bands, persistent chains" —
+open-endedness is the unsolved problem of the field and will not fall out
+by accident. This phase does the science: search parameter/rule space for
+regimes that score high on Observer metrics, instead of hand-authoring
+packs one at a time. Everything here is headless and cloud-verifiable
+(PLAYBOOK §5 boundary), so it is the sanctioned night-shift work while the
+remaining Phase 6 UI items wait on desktop sessions.
+
+Deliverables, in dependency order:
+
+- **Run scoring**: a `genesis-headless` mode that runs a config/pack for N
+  ticks and emits one machine-readable score record (RON) from Observer
+  metrics — structure count/size/lifetime, complexity, information
+  retention, hypothesis confidences. Deterministic, seed-stamped.
+- **Sweep driver**: run a batch of configs/packs (grid or explicit list),
+  collect score records, write a comparison table. Sequential is fine;
+  determinism per run matters, batch order must not.
+- **Search**: mutate the best-scoring configs (parameter jitter, rule
+  add/drop within schema) and iterate — a basic evolutionary loop over
+  worlds. Mutations logged so any discovered regime is reproducible from
+  its ancestry (same spirit as branch records).
+- **Selection-pressure experiments**: the standing gap — nothing yet makes
+  information content matter for survival. Author/search for rule packs
+  where information gates survival-relevant actions (env-conditioned decay,
+  info-gated absorb/emit already expressible?); if the schema cannot
+  express such coupling, propose the minimal rule extension in
+  QUESTIONS.md rather than inventing it.
+- **Findings docs**: each sweep lands docs/research/sweeps/<date>-<topic>.md
+  with the config corpus, scores, and what was learned — negative results
+  count and prevent re-running dead regions.
+
+Exit criteria: at least one discovered (not hand-authored) regime whose
+Observer metrics beat every shipped pack on persistence × complexity, with
+its ancestry reproducible end-to-end; or a documented, evidence-backed
+statement of which ingredient is missing for that to be possible.
+
+Non-goals: no engine/physics changes to chase scores (park proposals as
+questions); no distributed infrastructure — one box, sequential runs.
+
 ## Phase 7 — AI Narration and Hardening
 
 Goal: the storyteller layer, plus release-quality robustness.
