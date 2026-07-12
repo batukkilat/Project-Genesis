@@ -44,6 +44,29 @@ the main thread.
 - Build env: PATH includes ~/.cargo/bin and
   CARGO_TARGET_DIR=$HOME/.cache/genesis-target (project sits on /mnt/c).
 
+## Shift log (mandatory wind-down step)
+
+Before ending, append an entry to SHIFTLOG.md (newest first): date, commits
+pushed, then three sections written for the owner — who is not (yet) an
+engineer, is actively learning, and reads every entry:
+
+1. **What changed and why** — the real technical story, full vocabulary,
+   every term used correctly. Do not simplify; *explain*. One extra
+   sentence that unpacks a concept properly beats a dumbed-down phrasing.
+2. **How it was proven** — which tests/verifies ran, what they demonstrate,
+   and what they *cannot* catch (be honest about the limits).
+3. **What to watch** — risks introduced, assumptions made, anything a
+   reviewer with full context would poke at.
+
+Plus one **Concept of the shift**: pick the most instructive idea the work
+touched (e.g. why CSR mirrors the edge list, what a hash gate actually
+gates) and teach it in one paragraph, precisely, as if to a sharp learner
+who will eventually maintain this codebase. Never skip this because the
+work was routine — routine work uses the deepest machinery.
+
+This log is the owner's audit surface and textbook. Writing it vaguely or
+softly defeats both purposes.
+
 ## Pace and stop condition
 
 Self-paced. Stop iterating when the current phase is done and all remaining
