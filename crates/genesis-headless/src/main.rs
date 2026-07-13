@@ -12,6 +12,7 @@ use genesis_config::{ActionScript, RulePack, SimConfig};
 use genesis_sim::Simulation;
 use genesis_sim::interact::RuleSet;
 
+mod evolve;
 mod search;
 mod sweep;
 
@@ -129,6 +130,26 @@ enum Command {
         spec: PathBuf,
         /// Output directory (created if missing): <name>.score.ron per run
         /// + table.md.
+        #[arg(long)]
+        out: PathBuf,
+        /// Worker threads (0 = all cores). Never changes results.
+        #[arg(long, default_value_t = 0)]
+        threads: usize,
+    },
+    /// Run an evolutionary search over (config, pack) worlds — the Phase
+    /// 6.5 search loop (docs/research/search-design.md, step 2). Seeds are
+    /// screened, mutated, and selected by fitness for N generations; the
+    /// all-time best re-run at a long confirmation horizon. Fully
+    /// deterministic for a given spec and build: mutation streams derive
+    /// from (seed, generation, individual), selection ties break totally,
+    /// and the optional bond-count circuit breaker reads simulated state,
+    /// never wall time — re-running a search reproduces every file.
+    Search {
+        /// RON search spec: seeds, budget, selection, mutation parameters.
+        #[arg(long)]
+        spec: PathBuf,
+        /// Output directory: per-individual authoring files + ancestry +
+        /// score records, leaderboard.md, summary.ron.
         #[arg(long)]
         out: PathBuf,
         /// Worker threads (0 = all cores). Never changes results.
@@ -538,6 +559,26 @@ fn run(cli: Cli) -> Result<ExitCode, Box<dyn std::error::Error>> {
             let table_path = out.join("table.md");
             std::fs::write(&table_path, sweep::comparison_table(&results))?;
             println!("table        {}", table_path.display());
+            Ok(ExitCode::SUCCESS)
+        }
+
+        Command::Search { spec, out, threads } => {
+            init_thread_pool(threads)?;
+            let search_spec = evolve::SearchSpec::load(&spec)?;
+            let observer_config = match &search_spec.observer {
+                Some(p) => genesis_observer::ObserverConfig::load(p)?,
+                None => genesis_observer::ObserverConfig::default(),
+            };
+            let start = Instant::now();
+            let summary = evolve::run_search(&search_spec, &out, observer_config, true)?;
+            println!(
+                "search       {} individuals over {} generation(s) in {:.1?}",
+                summary.individuals.len(),
+                search_spec.generations,
+                start.elapsed(),
+            );
+            println!("leaderboard  {}", out.join("leaderboard.md").display());
+            println!("summary      {}", out.join("summary.ron").display());
             Ok(ExitCode::SUCCESS)
         }
 

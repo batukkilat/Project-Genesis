@@ -1,6 +1,11 @@
 # Search over worlds — design for the Phase 6.5 evolutionary loop
 
-Status: design draft, 2026-07-13. Evidence base:
+Status: design draft, 2026-07-13; **steps 1–2 landed 2026-07-13**, forks
+ratified in the ROADMAP decisions log (Q-2026-07-13-C) with two written
+divergences from this draft — the circuit breaker is a deterministic
+bond-count cap, not the wall-time cap proposed below, and confirmation
+runs once at end-of-search over the all-time top-k, not per generation
+(see the log entry for rationale). Evidence base:
 docs/research/sweeps/2026-07-13-shipped-packs.md (the baseline sweep).
 Decisions proposed here are ratified into the ROADMAP decisions log when
 the implementation lands; forks that are emergence-critical are flagged.

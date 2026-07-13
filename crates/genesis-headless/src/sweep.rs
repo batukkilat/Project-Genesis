@@ -108,6 +108,28 @@ pub fn score_run(
     every: u64,
     observer_config: ObserverConfig,
 ) -> Result<ScoreRecord, Box<dyn std::error::Error>> {
+    Ok(score_run_capped(config, rules, actions, ticks, every, observer_config, None)?.0)
+}
+
+/// [`score_run`] with the search loop's deterministic circuit breaker: when
+/// `bond_cap` is set and an observer sample counts more bonds than the cap,
+/// the run stops at that sample — the blow-up sample itself is recorded (so
+/// the record shows what tripped the breaker) and the returned flag is true.
+/// The record stamps the ticks *actually simulated*, so a capped record is
+/// still exactly reproducible by `genesis score --ticks <record.ticks>`.
+/// The cap reads simulated state at deterministic tick boundaries — never
+/// wall time — so whether it fires is a pure function of the run, and a
+/// search that uses it stays replayable on any machine (same build).
+#[allow(clippy::too_many_arguments)]
+pub fn score_run_capped(
+    config: &Option<PathBuf>,
+    rules: &Option<PathBuf>,
+    actions: &Option<PathBuf>,
+    ticks: u64,
+    every: u64,
+    observer_config: ObserverConfig,
+    bond_cap: Option<usize>,
+) -> Result<(ScoreRecord, bool), Box<dyn std::error::Error>> {
     let sim_config = match config {
         Some(p) => SimConfig::load(p)?,
         None => SimConfig::default(),
@@ -126,29 +148,42 @@ pub fn score_run(
     let mut tracker = StructureTracker::new(observer_config);
     let mut history = Timeline::new(observer_config);
 
+    let mut simulated = 0;
+    let mut capped = false;
     for i in 1..=ticks {
         sim.tick();
+        simulated = i;
         if i % every == 0 {
             let snap = sim.snapshot();
             let comps = genesis_observer::bond_components(&snap);
             let stats = genesis_observer::sample_stats(&snap, &comps);
+            let bonds = stats.bonds;
             tracker.observe(&comps);
             let metrics = genesis_observer::structure_metrics(&snap, &tracker);
             history.record(stats, metrics);
+            if let Some(cap) = bond_cap
+                && bonds > cap
+            {
+                capped = true;
+                break;
+            }
         }
     }
 
     let path_string = |p: &Option<PathBuf>| p.as_ref().map(|p| p.display().to_string());
-    Ok(ScoreRecord {
-        seed,
-        ticks,
-        sample_every: every,
-        state_hash: sim.state_hash(),
-        config: path_string(config),
-        rules: path_string(rules),
-        actions: path_string(actions),
-        score: RunScore::from_timeline(&history),
-    })
+    Ok((
+        ScoreRecord {
+            seed,
+            ticks: simulated,
+            sample_every: every,
+            state_hash: sim.state_hash(),
+            config: path_string(config),
+            rules: path_string(rules),
+            actions: path_string(actions),
+            score: RunScore::from_timeline(&history),
+        },
+        capped,
+    ))
 }
 
 /// Render the comparison table as markdown. Rows are sorted by the headline
