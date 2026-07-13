@@ -5,7 +5,100 @@ owner: full technical vocabulary, explained rather than simplified.
 
 ---
 
-## 2026-07-12/13 — desktop session (Fable)
+## 2026-07-13 — cloud night shift 1 (Fable)
+
+Commits pushed: `fcc4032` run scoring (Q-2026-07-13-A), `4ff13d9` sweep
+driver (Q-2026-07-13-B), `20a4efa` sieve selection-pressure pack,
+`cc03d10` search-loop design doc, `15e968b` baseline sweep findings +
+score corpus, `84b1679` search mutation operators + ancestry,
+`828fa95` search fitness v1.
+
+**What changed and why.** Phase 6.5 (the experiment loop) went from a
+roadmap section to a working instrument chain. First, *run scoring*: a
+run's observer timeline — the per-sample record of structures, metrics,
+and hypotheses — now collapses into one flat RON `ScoreRecord`: an
+identity stamp (seed, tick count, sample cadence, final state hash — the
+replay fingerprint) plus final-and-peak aggregates and one headline
+scalar, the maximum of persistence × complexity over every structure at
+every sample. Peaks matter because a regime that flourishes and
+collapses mid-run would be invisible to end-state-only scoring. Second,
+the *sweep driver*: `genesis sweep` runs an explicit list of
+(config, pack, script) triples through the exact same scoring code path
+and writes per-run records plus a comparison table sorted by score —
+batch order structurally cannot influence any output. Third, the
+*baseline*: the full shipped-pack corpus was swept at 20k ticks; the
+findings (below) reshaped the search design. Fourth, *selection
+pressure*: the new `sieve` pack makes information — until now a passive
+quantity — determine survival (info-poor particles are absorbable),
+reproduction (only info-rich split), and structure membership
+(bonds form between info-rich, break toward info-poor), while the paired
+config's `information_decay` makes information leak, so keeping it costs
+energy forever. Notably this needed *zero* engine changes — the existing
+rule vocabulary already expresses information-gated survival, answering
+the deliverable's standing schema question. Fifth, the *search
+foundation*: schema-bounded mutation operators (multiplicative jitter,
+rule drop, duplicate-and-jitter — the gene-duplication analog — and
+condition rewire) that repair-clamp into validation bounds; RON ancestry
+sidecars recording parent, exact operator, and RNG derivation
+coordinates, so every mutant is reproducible; and fitness v1, a product
+of saturating terms designed directly against the baseline's main
+finding.
+
+**How it was proven.** Determinism at every layer: the score
+integration test runs the full pipeline twice from scratch and requires
+bit-identical scores; `genesis score` run twice on chains produced
+byte-identical records; mutants are pure functions of
+(seed, generation, individual) — re-running produces diff-identical
+files; 1000 five-step mutation chains across a five-pack corpus stay
+schema-valid and assembly-safe. The sieve pairing passed the standard
+four-way verify (two fresh runs, save/resume, single-thread → one hash).
+The fitness function is tested *against the committed baseline records*:
+the raw scalar ranks condensed worlds on top, fitness provably inverts
+that ordering — the test is the design rationale, executable. What these
+cannot catch: whether the scored aggregates actually track "interesting"
+emergence (that is a judgment the sweep findings inform but cannot
+settle), and any cross-machine variation (scores inherit same-build
+determinism only — a different box may hash differently; records stamp
+that).
+
+**What to watch.** (1) The baseline's central finding: the headline
+persistence × complexity scalar is currently a *condensation contest* —
+`actual` and `bands` top the leaderboard by welding half the world into
+one immortal mega-blob with 1–2M accumulated bonds. The phase exit
+criterion is defined on that scalar, so "beating every shipped pack"
+must not be read as "out-condense them"; fitness v1 exists precisely to
+steer search elsewhere, and its exact form is still unratified — the
+first real search run should stress it. (2) Four shipped regimes
+(diffusion, hoarders, churn, echoes) score zero because all v1 observer
+metrics are bond-graph facts; order living in quantity distributions is
+invisible to the instrument. Recorded as a boundary, may eventually
+justify a new metric family (QUESTIONS.md candidate, not a quiet
+extension). (3) The original echoes sweep pairing was a *null run* — the
+default config spawns zero information, so its imprint rule never fired;
+fixed in the spec. Any future zero should be checked for "did the rules
+ever fire". (4) The sieve 20k-tick score run was still executing at
+shift end (bond-dense regimes take tens of minutes to hours — wall time
+tracks bond count, not particle count); its row lands in a follow-up.
+Re-run if lost: `genesis score --config configs/sieve.ron --rules
+packs/sieve.ron --ticks 20000 --every 100 --out sieve.score.ron`.
+(5) `sweeps/shipped-packs.ron` reruns bands at 108 minutes — do not
+casually re-sweep the corpus; the committed records are the baseline.
+
+**Concept of the shift: why a fitness function is not a score.** The
+scorer reports what happened — neutral aggregates, no preferences. The
+search loop needs something different: a single number whose *gradient*
+points where we want exploration to go. Using the report directly as
+fitness looks natural and fails subtly: our headline scalar rewards
+persistence × complexity, and the cheapest way a mutating rule pack can
+maximize it is to bond everything into one eternal lump — technically
+persistent, technically complex, scientifically dead. This is Goodhart's
+law in miniature: when a measure becomes a target, it stops measuring.
+The defense is structural, not moral: build the target out of *saturating*
+terms (logarithms that flatten as any one axis grows), so the only way to
+climb is to be good at several things at once — many structures AND long
+lifetimes AND retained information — while the neutral report is still
+recorded beside it, unbent, for the exit criterion to judge. One number
+to climb, another to trust; keeping them separate is the whole trick.
 
 Commits pushed: `06417bb` rotation as frame spin (save v15), `51f1ba9`
 windowed app shell, `c312be6` fps cap, `5cd4ec1` Windows launcher,
