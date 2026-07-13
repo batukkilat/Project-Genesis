@@ -76,11 +76,14 @@ justify a new metric family (QUESTIONS.md candidate, not a quiet
 extension). (3) The original echoes sweep pairing was a *null run* — the
 default config spawns zero information, so its imprint rule never fired;
 fixed in the spec. Any future zero should be checked for "did the rules
-ever fire". (4) The sieve 20k-tick score run was still executing at
-shift end (bond-dense regimes take tens of minutes to hours — wall time
-tracks bond count, not particle count); its row lands in a follow-up.
-Re-run if lost: `genesis score --config configs/sieve.ron --rules
-packs/sieve.ron --ticks 20000 --every 100 --out sieve.score.ron`.
+ever fire". (4) *(Resolved post-handover, `d726376`.)* The sieve 20k-tick run was
+cut after 3h35m without completing — sieve compounds bonds AND
+population, the runaway-bonding case live. Its committed row is the
+3k-tick screen horizon (labeled non-comparable to the 20k rows), the
+corpus spec now overrides sieve to 3k ticks, and nobody should re-run
+the 20k horizon without a bond cap and hours to spare. At 3k ticks
+sieve tops the corpus under fitness v1 (808 persistent structures,
+information retention 2× bands').
 (5) `sweeps/shipped-packs.ron` reruns bands at 108 minutes — do not
 casually re-sweep the corpus; the committed records are the baseline.
 
