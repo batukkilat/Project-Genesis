@@ -12,6 +12,7 @@ use genesis_config::{ActionScript, RulePack, SimConfig};
 use genesis_sim::Simulation;
 use genesis_sim::interact::RuleSet;
 
+mod search;
 mod sweep;
 
 #[derive(Parser)]
@@ -133,6 +134,37 @@ enum Command {
         /// Worker threads (0 = all cores). Never changes results.
         #[arg(long, default_value_t = 0)]
         threads: usize,
+    },
+    /// Apply N schema-bounded mutations to a (config, pack) pair and write
+    /// the mutant plus its ancestry record — the search loop's mutation
+    /// operator, runnable by hand (docs/research/search-design.md, step 1).
+    /// Deterministic: the mutant is a pure function of (seed, generation,
+    /// individual) and the parent content.
+    Mutate {
+        /// RON config file; defaults are used when omitted.
+        #[arg(long)]
+        config: Option<PathBuf>,
+        /// RON rule pack; mutation needs content to mutate.
+        #[arg(long)]
+        rules: PathBuf,
+        /// Search master seed.
+        #[arg(long, default_value_t = 0)]
+        seed: u64,
+        /// Derivation coordinates of this mutant's RNG stream.
+        #[arg(long, default_value_t = 0)]
+        generation: u64,
+        #[arg(long, default_value_t = 0)]
+        individual: u64,
+        /// Mutations to chain (one operator each).
+        #[arg(long, default_value_t = 1)]
+        steps: u32,
+        /// Jitter magnitude (multiplicative: value scales by exp(±sigma)).
+        #[arg(long, default_value_t = 0.3)]
+        sigma: f32,
+        /// Output directory: writes <id>.config.ron, <id>.pack.ron,
+        /// <id>.ancestry.ron with id = g<generation>-i<individual>.
+        #[arg(long)]
+        out: PathBuf,
     },
     /// Measure tick throughput.
     Bench {
@@ -505,6 +537,71 @@ fn run(cli: Cli) -> Result<ExitCode, Box<dyn std::error::Error>> {
             let table_path = out.join("table.md");
             std::fs::write(&table_path, sweep::comparison_table(&results))?;
             println!("table        {}", table_path.display());
+            Ok(ExitCode::SUCCESS)
+        }
+
+        Command::Mutate {
+            config,
+            rules,
+            seed,
+            generation,
+            individual,
+            steps,
+            sigma,
+            out,
+        } => {
+            if !(sigma > 0.0 && sigma.is_finite()) {
+                return Err("--sigma must be positive and finite".into());
+            }
+            let mut sim_config = load_config(&config)?;
+            let mut pack = RulePack::load(&rules)?;
+            let mut rng = search::mutation_rng(seed, generation, individual);
+            let mut last_op = None;
+            for _ in 0..steps {
+                last_op = Some(search::mutate(&mut sim_config, &mut pack, &mut rng, sigma));
+            }
+            // Belt and braces: the operators repair-clamp, but the mutant
+            // must pass the exact loaders the scorer will use.
+            sim_config.validate()?;
+            pack.validate()?;
+
+            std::fs::create_dir_all(&out)?;
+            let id = format!("g{generation:03}-i{individual:03}");
+            let config_path = out.join(format!("{id}.config.ron"));
+            let pack_path = out.join(format!("{id}.pack.ron"));
+            let record_path = out.join(format!("{id}.ancestry.ron"));
+            sim_config.save(&config_path)?;
+            pack.save(&pack_path)?;
+            let record = search::AncestryRecord {
+                id: id.clone(),
+                parent: Some(format!(
+                    "{} + {}",
+                    config
+                        .as_ref()
+                        .map(|p| p.display().to_string())
+                        .unwrap_or_else(|| "(default config)".into()),
+                    rules.display()
+                )),
+                op: last_op,
+                search_seed: seed,
+                generation,
+                individual,
+                config: config_path.display().to_string(),
+                rules: pack_path.display().to_string(),
+            };
+            std::fs::write(&record_path, record.to_ron()?)?;
+            // Read-back check: the sidecar must load as written — the step-2
+            // loop and any later audit rely on it.
+            if search::AncestryRecord::load(&record_path)? != record {
+                return Err("ancestry record did not round-trip through disk".into());
+            }
+            println!("mutant       {id} ({steps} step(s), sigma {sigma})");
+            if let Some(op) = &record.op {
+                println!("last op      {op:?}");
+            }
+            println!("config       {}", config_path.display());
+            println!("pack         {}", pack_path.display());
+            println!("ancestry     {}", record_path.display());
             Ok(ExitCode::SUCCESS)
         }
 

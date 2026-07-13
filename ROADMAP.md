@@ -350,7 +350,12 @@ Deliverables, in dependency order:
   fitness over the raw headline scalar (the baseline sweep shows the
   scalar alone breeds condensation), schema-bounded mutation operators,
   two-stage evaluation, sidecar ancestry; forks ratified into this log
-  on landing.
+  on landing. **Step 1 landed 2026-07-13**: mutation operators
+  (jitter / drop / duplicate-and-jitter / condition rewire, all
+  repair-clamped and re-validated; mutants are pure functions of
+  (seed, generation, individual) via order-free stream derivation) +
+  RON ancestry sidecars + `genesis mutate` for hand experiments. The
+  generation loop (step 2) carries the fitness decision.
 - **Selection-pressure experiments**: the standing gap — nothing yet makes
   information content matter for survival. Author/search for rule packs
   where information gates survival-relevant actions (env-conditioned decay,
