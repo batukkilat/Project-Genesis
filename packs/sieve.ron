@@ -1,0 +1,96 @@
+// Sieve: information becomes survival-relevant (Phase 6.5
+// selection-pressure experiment).
+//
+// The standing gap in every earlier pack: information spreads (echoes) or
+// gates *where* things happen (bands), but never determines whether a
+// particle keeps existing. Here it does, using only the shipped rule
+// vocabulary — no engine extension:
+//
+//   - CULL   (absorb, other_cond.information.max): matter-rich particles
+//     recycle info-poor neighbors. Falling below the information floor is
+//     lethal wherever a heavy neighbor drifts by.
+//   - SPLIT  (emit, self_cond.information.min): only info-rich, fueled
+//     particles divide, and the child carries half the parent's
+//     information — crossing the split threshold is the only way new
+//     particles enter the world.
+//   - IMPRINT (info_copy): info-rich particles overwrite info-poor
+//     neighbors at an energy cost — the one mechanism that raises
+//     information, fighting the config's information_decay.
+//   - FUEL   (transfer): energy diffuses rich -> poor so imprinting and
+//     splitting stay paid for.
+//   - BIND / SHED (bond_create / bond_break, both information-gated):
+//     info-rich particles bond to each other; a bond to a particle whose
+//     information has decayed below the cull floor is broken. Structure —
+//     the thing the Observer scores — is therefore *made of* maintained
+//     information: a cluster persists exactly as long as its members keep
+//     re-imprinting each other above the floor.
+//
+// Pair with configs/sieve.ron: its information_decay makes information a
+// leaking quantity that must be actively re-imprinted, so holding
+// information costs energy forever — persistence must be earned, and
+// what persists is exactly what keeps its information above the floor.
+// Matter and energy are conserved through every event; information is
+// deliberately not (copies create it, decay destroys it).
+//
+// Thresholds are deliberately spaced: a split from the 0.6 floor leaves
+// parent and child at 0.3 — above the 0.2 cull floor, but decaying toward
+// it; a fresh split must find an imprint (or already-rich neighbors) or
+// its line thins out. Nothing here names an outcome: whether hoards,
+// fronts, or nothing at all emerges is the experiment.
+(
+    rules: [
+        // CULL: heavy particles recycle info-poor neighbors. Matter and
+        // energy return to circulation; the information floor is enforced
+        // by absorption, not by decree.
+        (
+            radius: 4.0,
+            self_cond: ( matter: ( min: 0.5 ) ),
+            other_cond: ( information: ( max: 0.2 ) ),
+            probability: 0.05,
+            absorb: true,
+        ),
+        // SPLIT: info-rich, fueled particles divide; the child takes half
+        // of everything, information included.
+        (
+            radius: 6.0,
+            self_cond: ( information: ( min: 0.6 ), energy: ( min: 0.5 ), matter: ( min: 0.3 ) ),
+            probability: 0.02,
+            emit: ( matter_frac: 0.5, energy_frac: 0.5, info_frac: 0.5, offset: 1.5 ),
+        ),
+        // IMPRINT: the only way information rises. The imprinter pays
+        // energy to the receiver; the copy is noisy.
+        (
+            radius: 6.0,
+            self_cond: ( information: ( min: 0.5 ), energy: ( min: 0.1 ) ),
+            other_cond: ( information: ( max: 0.5 ) ),
+            probability: 0.1,
+            info_copy: ( cost: 0.02, noise: 0.1 ),
+        ),
+        // FUEL: energy diffuses rich -> poor.
+        (
+            radius: 6.0,
+            self_cond: ( energy: ( min: 0.5 ) ),
+            other_cond: ( energy: ( max: 0.5 ) ),
+            probability: 0.05,
+            transfer: ( energy: 0.03 ),
+        ),
+        // BIND: the info-rich cluster. Both sides must hold information —
+        // structure is built from the maintained quantity, nothing else.
+        (
+            radius: 4.0,
+            self_cond: ( information: ( min: 0.5 ) ),
+            other_cond: ( information: ( min: 0.5 ) ),
+            probability: 0.1,
+            bond_create: ( strength: 2.0 ),
+        ),
+        // SHED: a bond to a member that let its information decay below
+        // the cull floor is dropped — the cluster expels what it no longer
+        // recognizes, before the CULL rule recycles it.
+        (
+            radius: 4.0,
+            other_cond: ( information: ( max: 0.2 ) ),
+            probability: 0.2,
+            bond_break: true,
+        ),
+    ],
+)

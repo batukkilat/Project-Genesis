@@ -32,6 +32,13 @@
             config: "configs/env-gradient.ron",
             rules: "packs/bands.ron",
         ),
+        // Selection pressure: information gates survival, reproduction,
+        // and structure membership; decay makes it a maintained quantity.
+        (
+            name: "sieve",
+            config: "configs/sieve.ron",
+            rules: "packs/sieve.ron",
+        ),
         // Kitchen sink: env dynamics + LOD + scripted edits/impact/rift.
         (
             name: "full-stack",

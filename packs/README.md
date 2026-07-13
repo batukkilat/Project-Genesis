@@ -39,6 +39,7 @@ genesis init-rules my-pack.ron   # writes a starter pack to edit
 | `actual.ron` | conservation-respecting regime — flows equalize, structure costs, info is expensive | slow condensation: bonded clusters where energy concentrates, patterns fade unless re-paid |
 | `sandbox.ron` | anything-goes regime — flows amplify, bonds and copies are free | runaway concentration and info saturation; boiling population |
 | `bands.ron` | environment-gated — bonding only works where env field 0 is mid-range; breaks happen everywhere | structures accumulate only inside the band (pair with `configs/env-gradient.ron`); the environment shapes *where*, never *what* |
+| `sieve.ron` | selection-pressure — information gates survival (info-poor get absorbed), reproduction (only info-rich split), and membership (bonds form between the info-rich, break to the info-poor); config decay makes information a maintained quantity | clusters made of maintained information: what keeps its information above the floor persists, everything else is recycled (pair with `configs/sieve.ron`) |
 
 Authoring notes:
 
