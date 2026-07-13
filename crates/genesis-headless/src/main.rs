@@ -82,6 +82,39 @@ enum Command {
         #[arg(long, default_value_t = 1000)]
         ticks: u64,
     },
+    /// Run a simulation and emit one machine-readable score record (RON)
+    /// aggregated from Observer metrics — structure counts, sizes,
+    /// lifetimes, complexity, information retention, hypothesis
+    /// confidences. The Phase 6.5 experiment loop's unit of comparison:
+    /// deterministic and seed-stamped, so the same build + config + pack +
+    /// script always emits the identical record.
+    Score {
+        /// RON config file; defaults are used when omitted.
+        #[arg(long)]
+        config: Option<PathBuf>,
+        /// RON rule pack; no interactions when omitted.
+        #[arg(long)]
+        rules: Option<PathBuf>,
+        /// RON player-action script.
+        #[arg(long)]
+        actions: Option<PathBuf>,
+        #[arg(long, default_value_t = 1000)]
+        ticks: u64,
+        /// Observer sample cadence in ticks. Part of the record (a
+        /// different cadence aggregates a different timeline), never part
+        /// of replay identity.
+        #[arg(long, default_value_t = 100)]
+        every: u64,
+        /// RON observer config; never replay identity.
+        #[arg(long)]
+        observer: Option<PathBuf>,
+        /// Write the record here; print to stdout when omitted.
+        #[arg(long)]
+        out: Option<PathBuf>,
+        /// Worker threads (0 = all cores). Never changes results.
+        #[arg(long, default_value_t = 0)]
+        threads: usize,
+    },
     /// Measure tick throughput.
     Bench {
         #[arg(long, default_value_t = 1_000_000)]
@@ -362,6 +395,86 @@ fn run(cli: Cli) -> Result<ExitCode, Box<dyn std::error::Error>> {
                 eprintln!("DIVERGED: replay is not deterministic");
                 Ok(ExitCode::FAILURE)
             }
+        }
+
+        Command::Score {
+            config,
+            rules,
+            actions,
+            ticks,
+            every,
+            observer,
+            out,
+            threads,
+        } => {
+            if every == 0 {
+                return Err("--every must be at least 1 tick".into());
+            }
+            init_thread_pool(threads)?;
+            let sim_config = load_config(&config)?;
+            let seed = sim_config.seed;
+            let mut sim = Simulation::with_rules_and_actions(
+                &sim_config,
+                load_rules(&rules)?,
+                load_actions(&actions)?,
+            );
+
+            let observer_config = match &observer {
+                Some(p) => genesis_observer::ObserverConfig::load(p)?,
+                None => genesis_observer::ObserverConfig::default(),
+            };
+            let mut tracker = genesis_observer::StructureTracker::new(observer_config);
+            let mut history = genesis_observer::Timeline::new(observer_config);
+
+            for i in 1..=ticks {
+                sim.tick();
+                if i % every == 0 {
+                    let snap = sim.snapshot();
+                    let comps = genesis_observer::bond_components(&snap);
+                    let stats = genesis_observer::sample_stats(&snap, &comps);
+                    tracker.observe(&comps);
+                    let metrics = genesis_observer::structure_metrics(&snap, &tracker);
+                    history.record(stats, metrics);
+                }
+            }
+
+            let path_string = |p: &Option<PathBuf>| p.as_ref().map(|p| p.display().to_string());
+            let record = genesis_observer::ScoreRecord {
+                seed,
+                ticks,
+                sample_every: every,
+                state_hash: sim.state_hash(),
+                config: path_string(&config),
+                rules: path_string(&rules),
+                actions: path_string(&actions),
+                score: genesis_observer::RunScore::from_timeline(&history),
+            };
+            let text = record.to_ron()?;
+            match out {
+                Some(path) => {
+                    std::fs::write(&path, &text)?;
+                    let s = &record.score;
+                    println!("state hash   {:#018x}", record.state_hash);
+                    println!(
+                        "structures   {} final / {} peak (largest {} / {})",
+                        s.structures_final,
+                        s.structures_peak,
+                        s.largest_size_final,
+                        s.largest_size_peak
+                    );
+                    println!(
+                        "lifetime     {} final / {} peak samples",
+                        s.lifetime_final, s.lifetime_peak
+                    );
+                    println!(
+                        "score        {:.3} (max persistence x complexity)",
+                        s.persistence_complexity
+                    );
+                    println!("record       {}", path.display());
+                }
+                None => println!("{text}"),
+            }
+            Ok(ExitCode::SUCCESS)
         }
 
         Command::Bench {

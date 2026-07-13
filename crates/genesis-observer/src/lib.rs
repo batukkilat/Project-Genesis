@@ -22,6 +22,9 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
 
+pub mod score;
+pub use score::{RunScore, ScoreRecord};
+
 /// Observer configuration: thresholds for structure identity and reporting.
 ///
 /// Deliberately NOT part of replay identity — the Observer cannot affect the
