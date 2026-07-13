@@ -1,0 +1,14 @@
+(
+    id: "g004-i004",
+    parent: Some("g003-i003"),
+    op: Some(JitterConfig(
+        field: "initial.energy.hi",
+        old: 1.0,
+        new: 1.0087827,
+    )),
+    search_seed: 20260713,
+    generation: 4,
+    individual: 4,
+    config: "g004/g004-i004.config.ron",
+    rules: "g004/g004-i004.pack.ron",
+)

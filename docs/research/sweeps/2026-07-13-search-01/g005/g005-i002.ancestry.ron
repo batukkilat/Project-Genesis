@@ -1,0 +1,18 @@
+(
+    id: "g005-i002",
+    parent: Some("g002-i006"),
+    op: Some(DuplicateRule(
+        source: 0,
+        new_index: 6,
+        fields: [
+            ("transfer.information", 0.0, 0.0021735055),
+            ("other_cond.information.max", 0.2, 0.16285948),
+            ("transfer.energy", 0.0, 0.00069192855),
+        ],
+    )),
+    search_seed: 20260713,
+    generation: 5,
+    individual: 2,
+    config: "g005/g005-i002.config.ron",
+    rules: "g005/g005-i002.pack.ron",
+)

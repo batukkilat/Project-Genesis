@@ -1,0 +1,15 @@
+(
+    id: "g004-i003",
+    parent: Some("g002-i006"),
+    op: Some(JitterRule(
+        rule: 3,
+        field: "radius",
+        old: 6.0,
+        new: 6.9513283,
+    )),
+    search_seed: 20260713,
+    generation: 4,
+    individual: 3,
+    config: "g004/g004-i003.config.ron",
+    rules: "g004/g004-i003.pack.ron",
+)

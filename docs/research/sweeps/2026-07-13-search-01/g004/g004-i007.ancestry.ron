@@ -1,0 +1,14 @@
+(
+    id: "g004-i007",
+    parent: Some("g003-i003"),
+    op: Some(JitterConfig(
+        field: "physics.bond_rest_length",
+        old: 3.0,
+        new: 3.0339007,
+    )),
+    search_seed: 20260713,
+    generation: 4,
+    individual: 7,
+    config: "g004/g004-i007.config.ron",
+    rules: "g004/g004-i007.pack.ron",
+)

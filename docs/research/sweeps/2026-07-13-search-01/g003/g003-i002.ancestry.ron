@@ -1,0 +1,15 @@
+(
+    id: "g003-i002",
+    parent: Some("g002-i003"),
+    op: Some(JitterRule(
+        rule: 0,
+        field: "self_cond.energy.min",
+        old: 0.5,
+        new: 0.60951585,
+    )),
+    search_seed: 20260713,
+    generation: 3,
+    individual: 2,
+    config: "g003/g003-i002.config.ron",
+    rules: "g003/g003-i002.pack.ron",
+)

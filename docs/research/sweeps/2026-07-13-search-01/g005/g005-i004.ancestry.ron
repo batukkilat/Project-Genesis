@@ -1,0 +1,15 @@
+(
+    id: "g005-i004",
+    parent: Some("g004-i007"),
+    op: Some(RewireCondition(
+        rule: 2,
+        side: "self_cond",
+        from: "energy",
+        to: "matter",
+    )),
+    search_seed: 20260713,
+    generation: 5,
+    individual: 4,
+    config: "g005/g005-i004.config.ron",
+    rules: "g005/g005-i004.pack.ron",
+)

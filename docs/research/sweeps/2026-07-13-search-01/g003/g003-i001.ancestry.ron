@@ -1,0 +1,15 @@
+(
+    id: "g003-i001",
+    parent: Some("g001-i006"),
+    op: Some(JitterRule(
+        rule: 4,
+        field: "bond_create.strength",
+        old: 2.0,
+        new: 2.1456,
+    )),
+    search_seed: 20260713,
+    generation: 3,
+    individual: 1,
+    config: "g003/g003-i001.config.ron",
+    rules: "g003/g003-i001.pack.ron",
+)

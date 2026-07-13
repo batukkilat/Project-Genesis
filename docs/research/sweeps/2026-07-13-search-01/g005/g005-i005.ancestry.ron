@@ -1,0 +1,14 @@
+(
+    id: "g005-i005",
+    parent: Some("g002-i006"),
+    op: Some(JitterConfig(
+        field: "physics.core_frac",
+        old: 0.4,
+        new: 0.44552466,
+    )),
+    search_seed: 20260713,
+    generation: 5,
+    individual: 5,
+    config: "g005/g005-i005.config.ron",
+    rules: "g005/g005-i005.pack.ron",
+)

@@ -1,0 +1,15 @@
+(
+    id: "g004-i006",
+    parent: Some("g002-i006"),
+    op: Some(JitterRule(
+        rule: 5,
+        field: "transfer.energy",
+        old: 0.0,
+        new: 0.0012092792,
+    )),
+    search_seed: 20260713,
+    generation: 4,
+    individual: 6,
+    config: "g004/g004-i006.config.ron",
+    rules: "g004/g004-i006.pack.ron",
+)

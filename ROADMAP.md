@@ -362,7 +362,13 @@ Deliverables, in dependency order:
   deterministic bond-count circuit breaker; a finished search directory
   is a self-contained artifact (ancestry + records + leaderboard +
   summary), and re-running the spec reproduces it byte-for-byte.
-  Fitness v1 ratified in the decisions log.
+  Fitness v1 ratified in the decisions log. **First real run (search-01)
+  2026-07-13** (docs/research/sweeps/2026-07-13-search-01.md): sieve
+  lineage displaces chains at once, then plateaus ~1% above the seed —
+  the neighborhood is flat at σ=0.3; four instrument lessons recorded
+  (screen-horizon lifetime saturation, horizon-aware bond caps,
+  BIND-visibility ridge, corpus-horizon cost). No discovered regime
+  beats the corpus yet.
 - **Selection-pressure experiments**: the standing gap — nothing yet makes
   information content matter for survival. Author/search for rule packs
   where information gates survival-relevant actions (env-conditioned decay,

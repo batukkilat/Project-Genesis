@@ -1,0 +1,17 @@
+(
+    id: "g002-i007",
+    parent: Some("g001-i000"),
+    op: Some(DuplicateRule(
+        source: 4,
+        new_index: 6,
+        fields: [
+            ("transfer.matter", 0.0, 0.00090853835),
+            ("bond_create.strength", 2.0, 2.0971918),
+        ],
+    )),
+    search_seed: 20260713,
+    generation: 2,
+    individual: 7,
+    config: "g002/g002-i007.config.ron",
+    rules: "g002/g002-i007.pack.ron",
+)

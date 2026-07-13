@@ -1,0 +1,14 @@
+(
+    id: "g003-i003",
+    parent: Some("g002-i006"),
+    op: Some(JitterConfig(
+        field: "physics.attraction",
+        old: 5.0,
+        new: 3.8808181,
+    )),
+    search_seed: 20260713,
+    generation: 3,
+    individual: 3,
+    config: "g003/g003-i003.config.ron",
+    rules: "g003/g003-i003.pack.ron",
+)

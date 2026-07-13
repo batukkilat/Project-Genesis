@@ -1,0 +1,17 @@
+(
+    id: "g004-i005",
+    parent: Some("g003-i001"),
+    op: Some(DuplicateRule(
+        source: 5,
+        new_index: 6,
+        fields: [
+            ("other_cond.information.max", 0.2, 0.1816632),
+            ("radius", 4.0, 3.2661052),
+        ],
+    )),
+    search_seed: 20260713,
+    generation: 4,
+    individual: 5,
+    config: "g004/g004-i005.config.ron",
+    rules: "g004/g004-i005.pack.ron",
+)

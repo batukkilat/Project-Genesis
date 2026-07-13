@@ -1,0 +1,12 @@
+(
+    id: "g003-i005",
+    parent: Some("g002-i003"),
+    op: Some(DropRule(
+        rule: 3,
+    )),
+    search_seed: 20260713,
+    generation: 3,
+    individual: 5,
+    config: "g003/g003-i005.config.ron",
+    rules: "g003/g003-i005.pack.ron",
+)
