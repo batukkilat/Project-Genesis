@@ -345,7 +345,12 @@ Deliverables, in dependency order:
 - **Search**: mutate the best-scoring configs (parameter jitter, rule
   add/drop within schema) and iterate — a basic evolutionary loop over
   worlds. Mutations logged so any discovered regime is reproducible from
-  its ancestry (same spirit as branch records).
+  its ancestry (same spirit as branch records). Design drafted
+  2026-07-13 (docs/research/search-design.md): saturating-product
+  fitness over the raw headline scalar (the baseline sweep shows the
+  scalar alone breeds condensation), schema-bounded mutation operators,
+  two-stage evaluation, sidecar ancestry; forks ratified into this log
+  on landing.
 - **Selection-pressure experiments**: the standing gap — nothing yet makes
   information content matter for survival. Author/search for rule packs
   where information gates survival-relevant actions (env-conditioned decay,
