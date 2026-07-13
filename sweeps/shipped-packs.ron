@@ -43,10 +43,14 @@
         ),
         // Selection pressure: information gates survival, reproduction,
         // and structure membership; decay makes it a maintained quantity.
+        // Scored at the screen horizon: sieve grows population AND bonds
+        // (165k bonds by tick 3k), so its 20k run exceeds 3.5 hours — the
+        // runaway-bonding case of the baseline findings, doc finding 6.
         (
             name: "sieve",
             config: "configs/sieve.ron",
             rules: "packs/sieve.ron",
+            ticks: 3000,
         ),
         // Kitchen sink: env dynamics + LOD + scripted edits/impact/rift.
         (

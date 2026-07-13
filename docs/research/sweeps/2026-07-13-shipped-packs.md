@@ -27,7 +27,12 @@ Sorted by the headline score, `max persistence × complexity` over every
 | actual | 3631.36 | 2/283 | 4916/4921 | 172/172 | 21.12 | 0.00 | 276 | 216 | 1302.8s |
 | bands | 2711.93 | 1/412 | 6904/6904 | 122/122 | 22.23 | 3407.63 | 322 | 418 | 6451.1s |
 | sandbox | 2178.48 | 65/590 | 9035/10459 | 146/146 | 15.90 | 0.00 | 134 | 572 | 556.2s |
-| sieve | *20k-tick run in progress — row + record land in a follow-up commit* | | | | | | | | |
+| sieve † | 318.55 | 808/1765 | 82/82 | 30/30 | 10.98 | 7326.36 | 1237 | 1199 | ~230s |
+
+† **sieve is scored at 3 000 ticks** (30 samples — the search design's screen
+horizon), not 20 000: its 20k run was cut after 3h35m of wall time without
+completing (finding 6). Its row is not directly comparable to the 20k rows;
+lifetime 30/30 means "every sample it was given", a ceiling, not a limit.
 | full-stack | 1806.26 | 683/686 | 57/192 | 200/200 | 13.39 | 2863.75 | 1209 | 1594 | 153.7s |
 | chains | 1196.38 | 852/868 | 15/15 | 200/200 | 6.99 | 0.00 | 1849 | 1794 | 53.5s |
 | echoes | 0.00 | 0/0 | 0/0 | 0/0 | 0.00 | 0.00 | 0 | 0 | — (re-run) |
@@ -128,15 +133,33 @@ a sim change; parked until search actually hits it); (b) 20k-tick
 evaluations of interesting (= bonded) regimes cost minutes, so the
 evolutionary loop's generation size must be planned around that.
 
-### 6. Sieve (20k-tick result pending)
+### 6. Sieve: the selection experiment works — and immediately hits the wall it predicted
 
 Authored today against finding 2's corollary: its structure is built
 from information-gated bonds, so selection pressure and the scored
-observable are the same thing. Short-horizon behavior (600 ticks):
-population grows through info-gated splits (~13k particles), ~1.4k
-structures, high structure-held information. The 20k-tick row and what
-it says about long-run selection dynamics land with the follow-up
-commit.
+observable are the same thing. At the 3k-tick screen horizon it is,
+per structure-diversity criteria, the strongest world in the corpus:
+**808 live structures (1 765 peak), essentially all of them persistent
+for their entire observed lives** (mean lifetime 29.5 of a possible 30
+samples), holding 7 326 units of information — more than double
+`bands`' figure at 20k ticks — with 1 237 distinct structures flagged
+*possibly self-maintaining* at peak confidence 1.0. Its headline score
+of 318 at 3k ticks compares to chains' ~20 at the same horizon
+(chains needs 20k ticks to reach 1 196). Under fitness v1 it tops the
+corpus outright (~76 vs chains' ~36).
+
+The failure is the interesting part: sieve's 20k run was **cut after
+3h35m without finishing** — twice `bands`' full runtime. Bonds stood at
+165k by tick 3 000 and kept climbing; unlike the condensers, sieve also
+*grows its population* (13 866 particles by 3k), so its bond graph
+compounds on two axes at once. This is finding 5's runaway-bonding case
+produced by our own flagship pack on day one — the concrete argument
+for the search loop's deterministic bond-cap circuit breaker (landed
+with the generation loop, Q-2026-07-13-C) and for screen-horizon
+evaluation as the default. The corpus spec now scores sieve at 3 000
+ticks (`ticks:` override) so re-running `sweeps/shipped-packs.ron` stays
+tractable; anyone re-attempting the 20k horizon should bring hours or a
+bond cap. Its record is committed as `sieve-3k.score.ron`.
 
 ## Corpus
 
@@ -151,7 +174,7 @@ commit.
 | actual | (default) | packs/actual.ron | — |
 | sandbox | (default) | packs/sandbox.ron | — |
 | bands | configs/env-gradient.ron | packs/bands.ron | — |
-| sieve | configs/sieve.ron | packs/sieve.ron | — |
+| sieve | configs/sieve.ron | packs/sieve.ron | — (3 000 ticks — finding 6) |
 | full-stack | configs/full-stack.ron | packs/bands.ron | scripts/full-stack.ron |
 
 Note the density caveat: the default config spawns 10k particles in a
