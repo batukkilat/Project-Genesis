@@ -2262,6 +2262,8 @@ dependencies = [
  "genesis-persist",
  "genesis-sim",
  "rayon",
+ "ron",
+ "serde",
  "tracing",
  "tracing-subscriber",
 ]

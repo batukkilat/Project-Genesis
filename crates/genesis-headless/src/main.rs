@@ -12,6 +12,8 @@ use genesis_config::{ActionScript, RulePack, SimConfig};
 use genesis_sim::Simulation;
 use genesis_sim::interact::RuleSet;
 
+mod sweep;
+
 #[derive(Parser)]
 #[command(name = "genesis", about = "Project Genesis headless simulation")]
 struct Cli {
@@ -111,6 +113,23 @@ enum Command {
         /// Write the record here; print to stdout when omitted.
         #[arg(long)]
         out: Option<PathBuf>,
+        /// Worker threads (0 = all cores). Never changes results.
+        #[arg(long, default_value_t = 0)]
+        threads: usize,
+    },
+    /// Run every entry of a RON sweep spec through the run scorer,
+    /// sequentially, and write one score record per run plus a markdown
+    /// comparison table sorted by the headline score. Each run carries the
+    /// same determinism guarantee as `genesis score`; batch order can never
+    /// affect any record or the table.
+    Sweep {
+        /// RON sweep spec: defaults (ticks, every, observer) + run list.
+        #[arg(long)]
+        spec: PathBuf,
+        /// Output directory (created if missing): <name>.score.ron per run
+        /// + table.md.
+        #[arg(long)]
+        out: PathBuf,
         /// Worker threads (0 = all cores). Never changes results.
         #[arg(long, default_value_t = 0)]
         threads: usize,
@@ -411,44 +430,12 @@ fn run(cli: Cli) -> Result<ExitCode, Box<dyn std::error::Error>> {
                 return Err("--every must be at least 1 tick".into());
             }
             init_thread_pool(threads)?;
-            let sim_config = load_config(&config)?;
-            let seed = sim_config.seed;
-            let mut sim = Simulation::with_rules_and_actions(
-                &sim_config,
-                load_rules(&rules)?,
-                load_actions(&actions)?,
-            );
-
             let observer_config = match &observer {
                 Some(p) => genesis_observer::ObserverConfig::load(p)?,
                 None => genesis_observer::ObserverConfig::default(),
             };
-            let mut tracker = genesis_observer::StructureTracker::new(observer_config);
-            let mut history = genesis_observer::Timeline::new(observer_config);
-
-            for i in 1..=ticks {
-                sim.tick();
-                if i % every == 0 {
-                    let snap = sim.snapshot();
-                    let comps = genesis_observer::bond_components(&snap);
-                    let stats = genesis_observer::sample_stats(&snap, &comps);
-                    tracker.observe(&comps);
-                    let metrics = genesis_observer::structure_metrics(&snap, &tracker);
-                    history.record(stats, metrics);
-                }
-            }
-
-            let path_string = |p: &Option<PathBuf>| p.as_ref().map(|p| p.display().to_string());
-            let record = genesis_observer::ScoreRecord {
-                seed,
-                ticks,
-                sample_every: every,
-                state_hash: sim.state_hash(),
-                config: path_string(&config),
-                rules: path_string(&rules),
-                actions: path_string(&actions),
-                score: genesis_observer::RunScore::from_timeline(&history),
-            };
+            let record =
+                sweep::score_run(&config, &rules, &actions, ticks, every, observer_config)?;
             let text = record.to_ron()?;
             match out {
                 Some(path) => {
@@ -474,6 +461,50 @@ fn run(cli: Cli) -> Result<ExitCode, Box<dyn std::error::Error>> {
                 }
                 None => println!("{text}"),
             }
+            Ok(ExitCode::SUCCESS)
+        }
+
+        Command::Sweep { spec, out, threads } => {
+            init_thread_pool(threads)?;
+            let sweep_spec = sweep::SweepSpec::load(&spec)?;
+            let observer_config = match &sweep_spec.observer {
+                Some(p) => genesis_observer::ObserverConfig::load(p)?,
+                None => genesis_observer::ObserverConfig::default(),
+            };
+            std::fs::create_dir_all(&out)?;
+
+            let total = sweep_spec.runs.len();
+            let mut results: Vec<(String, genesis_observer::ScoreRecord)> =
+                Vec::with_capacity(total);
+            for (i, run) in sweep_spec.runs.iter().enumerate() {
+                let ticks = run.ticks.unwrap_or(sweep_spec.ticks);
+                let every = run.every.unwrap_or(sweep_spec.every);
+                let start = Instant::now();
+                let record = sweep::score_run(
+                    &run.config,
+                    &run.rules,
+                    &run.actions,
+                    ticks,
+                    every,
+                    observer_config,
+                )?;
+                let path = out.join(format!("{}.score.ron", run.name));
+                std::fs::write(&path, record.to_ron()?)?;
+                println!(
+                    "[{}/{}] {:<24} score {:>10.2}  hash {:#018x}  ({:.1?})",
+                    i + 1,
+                    total,
+                    run.name,
+                    record.score.persistence_complexity,
+                    record.state_hash,
+                    start.elapsed(),
+                );
+                results.push((run.name.clone(), record));
+            }
+
+            let table_path = out.join("table.md");
+            std::fs::write(&table_path, sweep::comparison_table(&results))?;
+            println!("table        {}", table_path.display());
             Ok(ExitCode::SUCCESS)
         }
 

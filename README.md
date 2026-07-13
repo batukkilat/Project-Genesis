@@ -48,6 +48,7 @@ cargo run -p genesis-headless --release -- verify --config configs/env-gradient.
 cargo run -p genesis-headless --release -- verify --config configs/full-stack.ron --rules packs/bands.ron --actions scripts/full-stack.ron --ticks 3000
 cargo run -p genesis-headless --release -- verify --actions scripts/spin-up.ron --ticks 4000
 cargo run -p genesis-headless --release -- score --rules packs/chains.ron --ticks 20000 --every 100 --out chains.score.ron
+cargo run -p genesis-headless --release -- sweep --spec sweeps/shipped-packs.ron --out sweep-results
 cargo run -p genesis-render --release --features app --bin genesis-app -- --config configs/env-gradient.ron
 cargo run -p genesis-render --release --features app --bin genesis-app -- --smoke 120   # window smoke test
 ```

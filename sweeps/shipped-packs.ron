@@ -1,0 +1,43 @@
+// The shipped-content corpus: every rule pack in packs/, its canonical
+// config/script pairing, and a physics-only control. This is the baseline
+// the Phase 6.5 experiment loop measures discovered regimes against —
+// the exit criterion is beating every row of this sweep on the headline
+// persistence x complexity score, with reproducible ancestry.
+//
+//   genesis sweep --spec sweeps/shipped-packs.ron --out <results-dir>
+//
+// 20k ticks matches the Phase 3 exit review horizon (long enough for
+// structure lifetimes to differentiate); sampling every 100 ticks gives
+// the observer 200 samples per run.
+#![enable(implicit_some)]
+(
+    ticks: 20000,
+    every: 100,
+    runs: [
+        // Control: pure physics, no interactions. Every score of zero here
+        // is a reminder that structure needs rules, not just forces.
+        (name: "physics-only"),
+        // Single-mechanism regimes on the default config.
+        (name: "diffusion", rules: "packs/diffusion.ron"),
+        (name: "hoarders", rules: "packs/hoarders.ron"),
+        (name: "chains", rules: "packs/chains.ron"),
+        (name: "echoes", rules: "packs/echoes.ron"),
+        (name: "churn", rules: "packs/churn.ron"),
+        // The two-packs-one-engine pair.
+        (name: "actual", rules: "packs/actual.ron"),
+        (name: "sandbox", rules: "packs/sandbox.ron"),
+        // Environment-gated bonding on its canonical gradient world.
+        (
+            name: "bands",
+            config: "configs/env-gradient.ron",
+            rules: "packs/bands.ron",
+        ),
+        // Kitchen sink: env dynamics + LOD + scripted edits/impact/rift.
+        (
+            name: "full-stack",
+            config: "configs/full-stack.ron",
+            rules: "packs/bands.ron",
+            actions: "scripts/full-stack.ron",
+        ),
+    ],
+)
