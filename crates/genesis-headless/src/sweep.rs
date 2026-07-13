@@ -165,18 +165,19 @@ pub fn comparison_table(results: &[(String, ScoreRecord)]) -> String {
 
     let mut out = String::new();
     out.push_str(
-        "| run | score (pers x cplx) | structures fin/peak | largest fin/peak \
+        "| run | score (pers x cplx) | fitness | structures fin/peak | largest fin/peak \
          | lifetime fin/peak | cplx peak | info final | self-maint | growing \
          | ticks | state hash |\n",
     );
-    out.push_str("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|\n");
+    out.push_str("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|\n");
     for (name, r) in rows {
         let s = &r.score;
         out.push_str(&format!(
-            "| {} | {:.2} | {}/{} | {}/{} | {}/{} | {:.2} | {:.2} | {} ({:.2}) \
+            "| {} | {:.2} | {:.2} | {}/{} | {}/{} | {}/{} | {:.2} | {:.2} | {} ({:.2}) \
              | {} ({:.2}) | {} | {:#018x} |\n",
             name,
             s.persistence_complexity,
+            crate::search::fitness(s),
             s.structures_final,
             s.structures_peak,
             s.largest_size_final,

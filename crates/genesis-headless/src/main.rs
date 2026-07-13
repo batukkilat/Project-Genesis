@@ -489,6 +489,7 @@ fn run(cli: Cli) -> Result<ExitCode, Box<dyn std::error::Error>> {
                         "score        {:.3} (max persistence x complexity)",
                         s.persistence_complexity
                     );
+                    println!("fitness      {:.3} (search fitness v1)", search::fitness(s));
                     println!("record       {}", path.display());
                 }
                 None => println!("{text}"),

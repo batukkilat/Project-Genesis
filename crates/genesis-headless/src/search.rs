@@ -100,6 +100,30 @@ pub fn mutation_rng(search_seed: u64, generation: u64, individual: u64) -> DetRn
     DetRng::derive(search_seed, &[MUTATE_TAG, generation, individual])
 }
 
+/// Search fitness v1 (docs/research/search-design.md, form B): a product of
+/// saturating terms, so no single axis can dominate —
+///
+/// `ln(1 + structures_final) × ln(1 + lifetime_peak) ×
+///  (1 + ln(1 + ln(1 + information_final)))`
+///
+/// - one immortal blob (`structures_final = 1`) is crushed by the first
+///   term — the raw headline scalar's condensation exploit (baseline sweep
+///   finding 1) does not pay here;
+/// - a spray of momentary fragments is crushed by the second;
+/// - structure-held information helps but saturates twice, because its
+///   scale is config-dependent (info-rich worlds must not win on units).
+///
+/// The raw `persistence_complexity` scalar is deliberately not an input:
+/// it stays *reported* in every record (the phase exit criterion is judged
+/// on it) while selection climbs this function. Exact form to be ratified
+/// in the decisions log when the generation loop lands; keep any change
+/// here in lockstep with the design doc.
+pub fn fitness(s: &genesis_observer::RunScore) -> f64 {
+    (1.0 + s.structures_final as f64).ln()
+        * (1.0 + s.lifetime_peak as f64).ln()
+        * (1.0 + (1.0 + (1.0 + s.information_final.max(0.0)).ln()).ln())
+}
+
 /// `old * exp(u·sigma)` with u uniform in [-1, 1] — multiplicative, so
 /// positive scales stay positive and proportionate. A zero value cannot
 /// escape zero multiplicatively, so it restarts at a small fraction of
@@ -577,6 +601,74 @@ mod tests {
             let v = jitter_value(&mut rng, 0.0, 0.3, 0.02);
             assert!((0.0..=0.002).contains(&v));
         }
+    }
+
+    #[test]
+    fn fitness_prefers_diverse_persistent_regimes_over_condensation() {
+        use genesis_observer::RunScore;
+        let mut condensed = RunScore::zero();
+        condensed.structures_final = 1;
+        condensed.lifetime_peak = 200;
+        condensed.persistence_complexity = 4000.0; // the exploit
+        let mut fragmented = RunScore::zero();
+        fragmented.structures_final = 2000;
+        fragmented.lifetime_peak = 1;
+        let mut diverse = RunScore::zero();
+        diverse.structures_final = 800;
+        diverse.lifetime_peak = 200;
+        assert!(
+            fitness(&diverse) > 5.0 * fitness(&condensed),
+            "one immortal blob must not outscore a diverse persistent regime"
+        );
+        assert!(
+            fitness(&diverse) > 5.0 * fitness(&fragmented),
+            "momentary fragments must not outscore persistence"
+        );
+        // Information helps, but saturates: 100x the information must gain
+        // far less than 2x fitness.
+        let mut informed = diverse;
+        informed.information_final = 1000.0;
+        let mut very_informed = diverse;
+        very_informed.information_final = 100_000.0;
+        assert!(fitness(&informed) > fitness(&diverse));
+        assert!(fitness(&very_informed) < 1.5 * fitness(&informed));
+    }
+
+    #[test]
+    fn fitness_reranks_the_committed_baseline_corpus() {
+        // The 2026-07-13 baseline records are the evidence this function was
+        // designed on: the raw headline scalar ranks the condensed worlds
+        // (actual, bands) on top; fitness must instead put the
+        // many-structures regimes (chains, full-stack) above them.
+        use genesis_observer::ScoreRecord;
+        let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../docs/research/sweeps/2026-07-13-shipped-packs");
+        let load = |name: &str| {
+            ScoreRecord::load(&dir.join(format!("{name}.score.ron")))
+                .unwrap_or_else(|e| panic!("{name}: {e:?}"))
+        };
+        let chains = load("chains");
+        let full_stack = load("full-stack");
+        let actual = load("actual");
+        let bands = load("bands");
+        // Raw scalar ranks condensation on top...
+        assert!(
+            actual.score.persistence_complexity > chains.score.persistence_complexity
+                && bands.score.persistence_complexity > chains.score.persistence_complexity
+        );
+        // ...fitness inverts that.
+        for condensed in [&actual, &bands] {
+            for diverse in [&chains, &full_stack] {
+                assert!(
+                    fitness(&diverse.score) > fitness(&condensed.score),
+                    "{:?} must outrank {:?}",
+                    diverse.rules,
+                    condensed.rules
+                );
+            }
+        }
+        // Bond-free regimes score zero fitness, mirroring their zero scores.
+        assert_eq!(fitness(&load("diffusion").score), 0.0);
     }
 
     #[test]
