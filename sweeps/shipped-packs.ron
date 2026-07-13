@@ -21,7 +21,16 @@
         (name: "diffusion", rules: "packs/diffusion.ron"),
         (name: "hoarders", rules: "packs/hoarders.ron"),
         (name: "chains", rules: "packs/chains.ron"),
-        (name: "echoes", rules: "packs/echoes.ron"),
+        // Echoes needs a world with information in it (its imprint rule
+        // gates on info > 0.5, and the default config spawns none) — the
+        // gradient world carries info 0..1 and its env field is inert
+        // without env_cond rules. Discovered by the 2026-07-13 baseline:
+        // the original default-config pairing was a null run.
+        (
+            name: "echoes",
+            config: "configs/env-gradient.ron",
+            rules: "packs/echoes.ron",
+        ),
         (name: "churn", rules: "packs/churn.ron"),
         // The two-packs-one-engine pair.
         (name: "actual", rules: "packs/actual.ron"),
