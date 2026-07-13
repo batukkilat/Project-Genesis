@@ -1,0 +1,45 @@
+// Search 01 — first real run of the Phase 6.5 evolutionary loop
+// (Q-2026-07-13-C). Probes the chains/sieve neighborhood: the two cheap
+// bonded regimes with opposite characters (chains: sparse eternal springs;
+// sieve: information-gated survival/reproduction). Bands is deliberately
+// absent — a bands-class screen costs ~16 min (108 min at 20k ticks,
+// baseline finding 5), which would eat the whole budget.
+//
+// Budget shape: 2 seeds + 5 generations x 8 children = 42 screens at 3k
+// ticks (a sieve-class screen costs ~50 s, a chains-class ~10 s); top 2
+// confirmed at 6000 ticks — twice the screen horizon, to catch slow
+// developers the screen mis-ranks. The corpus-horizon (20k) comparison of
+// the champion happens per champion via `genesis score`, outside the
+// search: a sieve-class 20k run costs an hour-plus and must be resumable.
+//
+// Reproduce with:
+//   genesis search --spec sweeps/search-01.ron --out <dir>
+// Committed results: docs/research/sweeps/2026-07-13-search-01/
+(
+    seed: 20260713,
+    generations: 5,
+    population: 8,
+    survivors: 3,
+    sigma: 0.3,
+    screen_ticks: 3000,
+    every: 100,
+    confirm_ticks: Some(6000),
+    confirm_top: 2,
+    // Bounds a runaway-bonding mutant's evaluation cost (deterministically:
+    // bond count is simulated state). ~10x the bond count a healthy
+    // sieve-class screen reaches; a mutant condensing toward the
+    // actual/bands regime (1-2M bonds at 20k) trips it long before it can
+    // dominate a generation's wall time.
+    bond_cap: Some(200000),
+    seeds: [
+        (
+            name: "chains",
+            rules: "packs/chains.ron",
+        ),
+        (
+            name: "sieve",
+            config: Some("configs/sieve.ron"),
+            rules: "packs/sieve.ron",
+        ),
+    ],
+)
