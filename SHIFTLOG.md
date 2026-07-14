@@ -5,6 +5,106 @@ owner: full technical vocabulary, explained rather than simplified.
 
 ---
 
+## 2026-07-14 — cloud night shift 2 (Fable)
+
+Commits pushed: `375a548` search generation loop (Q-2026-07-13-C),
+`414fc7e` search-01 spec, `6bf66af` search-01 results + findings, plus
+this wind-down commit (shift log).
+
+**What changed and why.** The Phase 6.5 search went from parts to a
+working instrument, and then did its first experiment. The *generation
+loop* (`genesis search`) closes the circle that shift 1 left open: it
+takes a RON spec naming a seed corpus (config + rule-pack pairs), scores
+every seed over a short "screening" horizon, then repeatedly (a) selects
+parents by *truncation selection* — the top-k by fitness of everything
+evaluated so far, which gives implicit elitism: a good individual is
+only ever displaced by one that actually beats it — (b) applies exactly
+one schema-bounded mutation per child (shift 1's operators), and (c)
+scores the children, for N generations. At the end, the all-time best
+re-run once at a longer confirmation horizon. Two decisions here
+deliberately diverge from the design draft and are written into the
+decisions log. First, the runaway-cost circuit breaker is a **bond-count
+cap, not a wall-time cap**: an evaluation stops at the first observer
+sample whose bond count exceeds the cap. Bond count is what actually
+drives wall time in this engine (baseline finding 5), but unlike wall
+time it is *simulated state* — deterministic, identical on every
+machine — so the search trajectory itself stays exactly reproducible,
+which a wall-clock cap would silently destroy (selection would depend
+on how fast the box happened to be). Second, confirmation runs once at
+the *end* of the search rather than every generation, because a bonded
+20k-tick evaluation costs minutes to hours and would dwarf the search.
+The whole search is a pure function of (spec, build): re-running it
+reproduces every artifact byte-for-byte, and each child can be
+reproduced *individually* by `genesis mutate` on its parent's committed
+files, because children are mutated from the parent artifact as written
+to disk, never from an in-memory copy that might differ in a stray bit.
+Then *search-01 ran for real*: 42 individuals over 5 generations in the
+chains/sieve neighborhood, fully committed (spec, every individual,
+ancestry chain, leaderboard, findings doc).
+
+**How it was proven.** The reproducibility promise is an executable
+test: the tiny end-to-end test runs a whole search twice and requires
+the summary, leaderboard, ancestry, pack, and score files to be
+byte-identical across the two runs. The bond-cap test proves a capped
+run stops exactly at a sample boundary, stamps the ticks it actually
+simulated (so the record remains reproducible by `genesis score
+--ticks <that>`), scores fitness 0, and that the search containing it
+still reproduces. Full workspace suite green, clippy zero warnings,
+fmt clean. No simulation code was touched this shift — the search only
+authors content files and reads score records, so no `genesis verify`
+run was required by the gate (the four-way verify guards replay
+identity, and nothing this shift can reach it). What the tests cannot
+catch: whether fitness v1 *selects for anything scientifically
+interesting* — that is exactly what the real run was for, and its
+verdict is mixed (see below).
+
+**What to watch.** (1) Search-01's honest result: the sieve
+neighborhood is a **fitness plateau** — five generations climbed 1%
+over the seed. Single small mutations barely move a homeostatic regime;
+that is robustness (good for sieve as content) and a warning that local
+search with σ=0.3 will not escape basins on its own. (2) The screening
+horizon **saturates the lifetime term**: every persistent regime maxes
+30/30 samples, so selection effectively ran on structure count +
+information only. Fixing this properly may need horizon-relative
+lifetime in the Observer — parked deliberately; do not bend metrics
+mid-experiment. (3) The bond cap was sized from the screen horizon, so
+both 6k-tick confirmations tripped it (bonds grow roughly linearly —
+this was arithmetic, and the findings doc turns it into a sizing rule:
+cap ≈ expected bonds at *that* horizon × headroom). (4) The sieve
+baseline row was **resolved in parallel by the shift-1 session**
+(`d726376`, `1b81acd`, landed while this shift ran): sieve is scored at
+the 3k screen horizon with the 20k horizon explicitly warned off —
+sieve compounds bonds *and* population, so 20k is runaway territory
+(cut there after 3h35m). This shift's own 20k re-attempt was killed at
+~55 CPU-minutes by a container restart before that verdict landed,
+which independently confirms it: do not point these boxes at sieve-20k
+again. (5) The
+exit criterion is untouched: no discovered regime beats the corpus;
+the champion's corpus-horizon (20k) evaluation is a recorded follow-up
+command, not a number yet.
+
+**Concept of the shift: why the circuit breaker reads bonds, not the
+clock.** Any search over self-modifying worlds needs a way to kill
+runaway evaluations, and the obvious tool — a wall-clock timeout — is a
+trap in a determinism-first project. Wall time is a property of the
+*machine*: the same mutant world takes 40 minutes on a laptop and 12 on
+a workstation, so a timeout fires on one and not the other, selection
+picks different parents, and from that generation on the two searches
+explore different universes — the experiment is no longer reproducible
+from its spec, which was the entire point of logging ancestry. The
+escape is to find a *simulated* quantity that tracks the cost you are
+actually afraid of, and cap that instead. Here, wall time is driven
+almost entirely by bond count (springs and the per-tick adjacency
+mirror dominate), and bond count is state: every machine computes the
+identical value at the identical tick. The cap therefore fires
+identically everywhere, runaway mutants still cost a bounded slice of
+the budget, and "re-run the spec, get the same search" survives. The
+general lesson: when you must bound a physical resource (time, memory)
+in a deterministic system, bound its *deterministic proxy*, or you
+trade your invariants for convenience.
+
+---
+
 ## 2026-07-13 — cloud night shift 1 (Fable)
 
 Commits pushed: `fcc4032` run scoring (Q-2026-07-13-A), `4ff13d9` sweep
