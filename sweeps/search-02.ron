@@ -1,0 +1,49 @@
+// Search 02 — bolder steps out of the sieve plateau.
+//
+// Search-01 (docs/research/sweeps/2026-07-13-search-01.md) found the
+// chains/sieve neighborhood is a fitness plateau under single sigma=0.3
+// mutations: five generations climbed 1%. This spec applies its
+// instrument lessons via search v1.1 (Q-2026-07-14-A):
+//
+// - mutations_per_child: 3 and sigma 0.6 — compound, larger steps, the
+//   cheapest plateau escape that bends no metric (finding 1);
+// - confirm_bond_cap: 600000 — sieve-class regimes carry ~150k bonds at
+//   3k ticks and grow roughly linearly, so a 6k confirmation expects
+//   ~300k; x2 headroom keeps honest champions uncapped while still
+//   bounding a runaway (finding 3's sizing rule: cap ~ expected bonds at
+//   THAT horizon x headroom);
+// - screen bond_cap unchanged at 200k (~10x a healthy sieve screen);
+// - same seeds, screen horizon, and observer as search-01, so the two
+//   searches differ ONLY in step size and the confirmation cap — a
+//   controlled comparison of local vs bolder search on the same ground.
+//
+// Budget: 2 seeds + 6 generations x 10 children = 62 screens at 3k
+// ticks, top 2 confirmed at 6k.
+//
+//   genesis search --spec sweeps/search-02.ron --out <dir>
+#![enable(implicit_some)]
+(
+    seed: 20260714,
+    generations: 6,
+    population: 10,
+    survivors: 3,
+    sigma: 0.6,
+    mutations_per_child: 3,
+    screen_ticks: 3000,
+    every: 100,
+    confirm_ticks: 6000,
+    confirm_top: 2,
+    bond_cap: 200000,
+    confirm_bond_cap: 600000,
+    seeds: [
+        (
+            name: "chains",
+            rules: "packs/chains.ron",
+        ),
+        (
+            name: "sieve",
+            config: Some("configs/sieve.ron"),
+            rules: "packs/sieve.ron",
+        ),
+    ],
+)
