@@ -598,10 +598,9 @@ fn run(cli: Cli) -> Result<ExitCode, Box<dyn std::error::Error>> {
             let mut sim_config = load_config(&config)?;
             let mut pack = RulePack::load(&rules)?;
             let mut rng = search::mutation_rng(seed, generation, individual);
-            let mut last_op = None;
-            for _ in 0..steps {
-                last_op = Some(search::mutate(&mut sim_config, &mut pack, &mut rng, sigma));
-            }
+            let ops: Vec<search::MutationOp> = (0..steps)
+                .map(|_| search::mutate(&mut sim_config, &mut pack, &mut rng, sigma))
+                .collect();
             // Belt and braces: the operators repair-clamp, but the mutant
             // must pass the exact loaders the scorer will use.
             sim_config.validate()?;
@@ -624,7 +623,7 @@ fn run(cli: Cli) -> Result<ExitCode, Box<dyn std::error::Error>> {
                         .unwrap_or_else(|| "(default config)".into()),
                     rules.display()
                 )),
-                op: last_op,
+                ops,
                 search_seed: seed,
                 generation,
                 individual,
@@ -638,8 +637,8 @@ fn run(cli: Cli) -> Result<ExitCode, Box<dyn std::error::Error>> {
                 return Err("ancestry record did not round-trip through disk".into());
             }
             println!("mutant       {id} ({steps} step(s), sigma {sigma})");
-            if let Some(op) = &record.op {
-                println!("last op      {op:?}");
+            for (i, op) in record.ops.iter().enumerate() {
+                println!("op {:>2}        {op:?}", i + 1);
             }
             println!("config       {}", config_path.display());
             println!("pack         {}", pack_path.display());

@@ -5,8 +5,13 @@ ratified in the ROADMAP decisions log (Q-2026-07-13-C) with two written
 divergences from this draft — the circuit breaker is a deterministic
 bond-count cap, not the wall-time cap proposed below, and confirmation
 runs once at end-of-search over the all-time top-k, not per generation
-(see the log entry for rationale). Evidence base:
-docs/research/sweeps/2026-07-13-shipped-packs.md (the baseline sweep).
+(see the log entry for rationale). **Instrument v1.1 landed 2026-07-14**
+(Q-2026-07-14-A): spec-level `mutations_per_child` (bolder steps, from
+search-01 finding 1) and `confirm_bond_cap` (a per-stage cost bound, from
+search-01 finding 3); ancestry sidecars record the full operator chain,
+pre-v1.1 single-`op` sidecars still load. Evidence base:
+docs/research/sweeps/2026-07-13-shipped-packs.md (the baseline sweep) and
+docs/research/sweeps/2026-07-13-search-01.md (the first real run).
 Decisions proposed here are ratified into the ROADMAP decisions log when
 the implementation lands; forks that are emergence-critical are flagged.
 

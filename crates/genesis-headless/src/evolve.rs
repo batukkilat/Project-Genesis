@@ -38,6 +38,10 @@ fn default_confirm_top() -> u32 {
     3
 }
 
+fn default_mutations_per_child() -> u32 {
+    1
+}
+
 /// One corpus seed: a named (config, pack) pair the search starts from.
 /// Generation 0 is exactly this list, copied into the search directory and
 /// screened like any child.
@@ -80,6 +84,14 @@ pub struct SearchSpec {
     /// Mutation magnitude (values scale by exp(±sigma)).
     #[serde(default = "default_sigma")]
     pub sigma: f32,
+    /// Mutations applied per child, drawn sequentially from the child's one
+    /// derivation stream — exactly `genesis mutate --steps`, so any child
+    /// stays hand-reproducible in one command. Default 1 (search-01
+    /// behavior); raise it to take bolder steps when single mutations
+    /// plateau (search-01 finding 1: a homeostatic regime barely moves
+    /// under one σ=0.3 jitter).
+    #[serde(default = "default_mutations_per_child")]
+    pub mutations_per_child: u32,
     /// Screening horizon: every individual simulates this many ticks.
     pub screen_ticks: u64,
     /// Observer sample cadence for every evaluation, in ticks.
@@ -102,6 +114,13 @@ pub struct SearchSpec {
     /// trajectory replayable.
     #[serde(default)]
     pub bond_cap: Option<usize>,
+    /// Circuit breaker for the confirmation stage; falls back to `bond_cap`
+    /// when omitted. The cap is a per-evaluation cost bound, and bonds grow
+    /// with the horizon — a cap sized for the screen spuriously kills every
+    /// longer confirmation run (search-01 finding 3: both 6k-tick confirms
+    /// tripped the 3k-sized cap, by arithmetic rather than bad luck).
+    #[serde(default)]
+    pub confirm_bond_cap: Option<usize>,
     /// The seed corpus. At least one entry.
     pub seeds: Vec<SeedSpec>,
 }
@@ -140,6 +159,11 @@ impl SearchSpec {
                 "sigma must be positive and finite".into(),
             ));
         }
+        if self.mutations_per_child == 0 {
+            return Err(ConfigError::Invalid(
+                "mutations_per_child must be at least 1".into(),
+            ));
+        }
         let mut names: Vec<&str> = self.seeds.iter().map(|s| s.name.as_str()).collect();
         names.sort_unstable();
         if let Some(w) = names.windows(2).find(|w| w[0] == w[1]) {
@@ -171,7 +195,7 @@ struct Individual {
     /// Seed name for generation 0, parent id otherwise (leaderboard lineage
     /// column; the ancestry sidecar holds the full story).
     origin: String,
-    op: Option<MutationOp>,
+    ops: Vec<MutationOp>,
     /// Authoring content as loaded back from this individual's own files —
     /// the on-disk artifact is the authority children mutate from.
     config: SimConfig,
@@ -242,29 +266,37 @@ fn rank_pool(pool: &[Individual]) -> Vec<usize> {
     ranked_indices(&keyed)
 }
 
-/// Short human form of an operator for the leaderboard.
-fn op_brief(op: &Option<MutationOp>) -> String {
+/// Short human form of one operator for the leaderboard.
+fn op_brief(op: &MutationOp) -> String {
     match op {
-        None => "—".into(),
-        Some(MutationOp::JitterConfig { field, old, new }) => {
+        MutationOp::JitterConfig { field, old, new } => {
             format!("jitter {field} {old:.4}→{new:.4}")
         }
-        Some(MutationOp::JitterRule {
+        MutationOp::JitterRule {
             rule,
             field,
             old,
             new,
-        }) => format!("jitter r{rule}.{field} {old:.4}→{new:.4}"),
-        Some(MutationOp::DropRule { rule }) => format!("drop r{rule}"),
-        Some(MutationOp::DuplicateRule {
+        } => format!("jitter r{rule}.{field} {old:.4}→{new:.4}"),
+        MutationOp::DropRule { rule } => format!("drop r{rule}"),
+        MutationOp::DuplicateRule {
             source, new_index, ..
-        }) => format!("dup r{source}→r{new_index}"),
-        Some(MutationOp::RewireCondition {
+        } => format!("dup r{source}→r{new_index}"),
+        MutationOp::RewireCondition {
             rule,
             side,
             from,
             to,
-        }) => format!("rewire r{rule}.{side} {from}→{to}"),
+        } => format!("rewire r{rule}.{side} {from}→{to}"),
+    }
+}
+
+/// All of an individual's operators, in application order; "—" for seeds.
+fn ops_brief(ops: &[MutationOp]) -> String {
+    if ops.is_empty() {
+        "—".into()
+    } else {
+        ops.iter().map(op_brief).collect::<Vec<_>>().join("; ")
     }
 }
 
@@ -281,7 +313,7 @@ fn write_and_eval(
     individual: u64,
     origin: String,
     parent: Option<String>,
-    op: Option<MutationOp>,
+    ops: Vec<MutationOp>,
     config: &SimConfig,
     pack: &RulePack,
     observer: ObserverConfig,
@@ -305,7 +337,7 @@ fn write_and_eval(
     let ancestry = AncestryRecord {
         id: id.clone(),
         parent,
-        op: op.clone(),
+        ops: ops.clone(),
         search_seed: spec.seed,
         generation,
         individual,
@@ -352,7 +384,7 @@ fn write_and_eval(
             } else {
                 ""
             },
-            op_brief(&op),
+            ops_brief(&ops),
         );
     }
 
@@ -360,7 +392,7 @@ fn write_and_eval(
         id,
         generation,
         origin,
-        op,
+        ops,
         config: SimConfig::load(&config_path)?,
         pack: RulePack::load(&pack_path)?,
         fitness,
@@ -401,7 +433,7 @@ pub fn run_search(
             i as u64,
             seed.name.clone(),
             None,
-            None,
+            Vec::new(),
             &config,
             &pack,
             observer,
@@ -422,7 +454,9 @@ pub fn run_search(
             let mut config = parent.config.clone();
             let mut pack = parent.pack.clone();
             let mut rng = search::mutation_rng(spec.seed, g, i);
-            let op = search::mutate(&mut config, &mut pack, &mut rng, spec.sigma);
+            let ops: Vec<MutationOp> = (0..spec.mutations_per_child)
+                .map(|_| search::mutate(&mut config, &mut pack, &mut rng, spec.sigma))
+                .collect();
             children.push(write_and_eval(
                 spec,
                 out,
@@ -430,7 +464,7 @@ pub fn run_search(
                 i,
                 parent.id.clone(),
                 Some(parent.id.clone()),
-                Some(op),
+                ops,
                 &config,
                 &pack,
                 observer,
@@ -458,7 +492,7 @@ pub fn run_search(
                 confirm_ticks,
                 spec.every,
                 observer,
-                spec.bond_cap,
+                spec.confirm_bond_cap.or(spec.bond_cap),
             )?;
             record.config = Some(format!("g{:03}/{}.config.ron", ind.generation, ind.id));
             record.rules = Some(format!("g{:03}/{}.pack.ron", ind.generation, ind.id));
@@ -504,7 +538,7 @@ pub fn run_search(
             rank + 1,
             ind.id,
             ind.origin,
-            op_brief(&ind.op),
+            ops_brief(&ind.ops),
             ind.fitness,
             s.persistence_complexity,
             s.structures_final,
@@ -593,12 +627,14 @@ mod tests {
             population: 3,
             survivors: 2,
             sigma: 0.3,
+            mutations_per_child: 1,
             screen_ticks: 60,
             every: 20,
             confirm_ticks: Some(90),
             confirm_top: 2,
             observer: None,
             bond_cap: None,
+            confirm_bond_cap: None,
             seeds: vec![SeedSpec {
                 name: "tiny-chains".into(),
                 config: Some(config_path),
@@ -630,6 +666,9 @@ mod tests {
         let mut s = good.clone();
         s.sigma = 0.0;
         assert!(s.validate().is_err(), "zero sigma");
+        let mut s = good.clone();
+        s.mutations_per_child = 0;
+        assert!(s.validate().is_err(), "zero mutations per child");
         let mut s = good.clone();
         s.seeds[0].name = "has space".into();
         assert!(s.validate().is_err(), "names become filenames");
@@ -698,7 +737,7 @@ mod tests {
                 .unwrap();
                 let parent = rec.parent.expect("children have parents");
                 assert!(ids.contains(&parent), "parent {parent} must exist");
-                assert!(rec.op.is_some(), "children carry their operator");
+                assert_eq!(rec.ops.len(), 1, "children carry their operator");
                 SimConfig::load(&out_a.join(&rec.config)).unwrap();
                 RulePack::load(&out_a.join(&rec.rules)).unwrap();
             }
@@ -708,6 +747,112 @@ mod tests {
             let record = ScoreRecord::load(&out_a.join(format!("{id}.confirm.score.ron"))).unwrap();
             assert_eq!(record.ticks, 90, "confirmation ran the long horizon");
         }
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// Multi-mutation children: every child's sidecar carries exactly
+    /// `mutations_per_child` operators, and re-applying them via the same
+    /// stream on the parent's on-disk files reproduces the child's files —
+    /// the `genesis mutate --steps` equivalence the spec field promises.
+    #[test]
+    fn multi_mutation_children_reproduce_from_parent_artifacts() {
+        let dir = temp_dir("multimut");
+        let mut spec = tiny_spec(&dir);
+        spec.mutations_per_child = 3;
+        spec.generations = 1;
+        spec.confirm_ticks = None;
+        let out = dir.join("out");
+        let summary = run_search(&spec, &out, ObserverConfig::default(), false).unwrap();
+        assert_eq!(summary.individuals.len(), 4); // 1 seed + 3 children
+
+        for i in 0..3u64 {
+            let rec =
+                AncestryRecord::load(&out.join(format!("g001/g001-i{i:03}.ancestry.ron"))).unwrap();
+            assert_eq!(rec.ops.len(), 3, "children carry all three operators");
+            let parent_rec =
+                AncestryRecord::load(&out.join("g000/g000-i000.ancestry.ron")).unwrap();
+            let mut config = SimConfig::load(&out.join(&parent_rec.config)).unwrap();
+            let mut pack = RulePack::load(&out.join(&parent_rec.rules)).unwrap();
+            let mut rng = search::mutation_rng(spec.seed, 1, i);
+            let replayed: Vec<MutationOp> = (0..3)
+                .map(|_| search::mutate(&mut config, &mut pack, &mut rng, spec.sigma))
+                .collect();
+            assert_eq!(replayed, rec.ops, "the op chain replays exactly");
+            let child_pack = RulePack::load(&out.join(&rec.rules)).unwrap();
+            let child_config = SimConfig::load(&out.join(&rec.config)).unwrap();
+            assert_eq!(
+                ron::ser::to_string(&pack).unwrap(),
+                ron::ser::to_string(&child_pack).unwrap(),
+                "replayed pack matches the committed child"
+            );
+            assert_eq!(
+                ron::ser::to_string(&config).unwrap(),
+                ron::ser::to_string(&child_config).unwrap(),
+                "replayed config matches the committed child"
+            );
+        }
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// `confirm_bond_cap` overrides `bond_cap` for the confirmation stage
+    /// only: a screen-sized cap kills every screen, while the confirmation
+    /// of the same world runs its full horizon under the larger cap
+    /// (search-01 finding 3 — the cap must scale with the horizon).
+    #[test]
+    fn confirm_bond_cap_overrides_screen_cap() {
+        let dir = temp_dir("confirmcap");
+        // The eager-bonding world from the bond-cap test: bonding is certain
+        // by the first sample, so a cap of 0 trips every screen.
+        let mut pack = RulePack::load(&repo_root().join("packs/chains.ron")).unwrap();
+        let max_radius = SimConfig::default().physics.interaction_radius;
+        pack.rules.retain(|r| r.bond_create.is_some());
+        assert!(!pack.rules.is_empty());
+        for r in &mut pack.rules {
+            r.probability = 1.0;
+            r.radius = max_radius;
+            r.self_cond = Default::default();
+            r.other_cond = Default::default();
+        }
+        let pack_path = dir.join("eager.pack.ron");
+        pack.save(&pack_path).unwrap();
+        let mut config = tiny_config();
+        config.particle_count = 600;
+        let config_path = dir.join("dense.config.ron");
+        config.save(&config_path).unwrap();
+
+        let spec = SearchSpec {
+            seed: 5,
+            generations: 1,
+            population: 1,
+            survivors: 1,
+            sigma: 0.3,
+            mutations_per_child: 1,
+            screen_ticks: 60,
+            every: 10,
+            confirm_ticks: Some(90),
+            confirm_top: 1,
+            observer: None,
+            bond_cap: Some(0),
+            confirm_bond_cap: Some(usize::MAX),
+            seeds: vec![SeedSpec {
+                name: "eager".into(),
+                config: Some(config_path),
+                rules: pack_path,
+            }],
+        };
+        let out = dir.join("out");
+        let summary = run_search(&spec, &out, ObserverConfig::default(), false).unwrap();
+
+        let seed_row = &summary.individuals[0];
+        assert!(seed_row.capped, "the screen must trip the screen cap");
+        assert_eq!(summary.confirmed.len(), 1);
+        let record =
+            ScoreRecord::load(&out.join(format!("{}.confirm.score.ron", summary.confirmed[0])))
+                .unwrap();
+        assert_eq!(
+            record.ticks, 90,
+            "confirmation must run its full horizon under its own cap"
+        );
         std::fs::remove_dir_all(&dir).ok();
     }
 
@@ -744,12 +889,14 @@ mod tests {
             population: 2,
             survivors: 1,
             sigma: 0.3,
+            mutations_per_child: 1,
             screen_ticks: 100,
             every: 10,
             confirm_ticks: None,
             confirm_top: 1,
             observer: None,
             bond_cap: Some(0),
+            confirm_bond_cap: None,
             seeds: vec![SeedSpec {
                 name: "eager".into(),
                 config: Some(config_path),

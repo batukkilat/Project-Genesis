@@ -60,18 +60,24 @@ pub enum MutationOp {
 }
 
 /// Ancestry sidecar for one individual (RON on disk): everything needed to
-/// reproduce it — parent, the exact operator applied, and the derivation
-/// coordinates of the RNG stream that chose it. Seeds from the corpus have
-/// `parent: None, op: None`. Lives above the engine, never replay identity
+/// reproduce it — parent, the exact operators applied, and the derivation
+/// coordinates of the RNG stream that chose them. Seeds from the corpus have
+/// `parent: None, ops: []`. Lives above the engine, never replay identity
 /// (the BranchRecord precedent, Q-2026-07-10-A).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(from = "AncestryRecordDe")]
 pub struct AncestryRecord {
     /// This individual's id, e.g. "g003-i07".
     pub id: String,
     /// Parent individual's id; None for corpus seeds.
     pub parent: Option<String>,
-    /// The mutation that produced this individual from the parent.
-    pub op: Option<MutationOp>,
+    /// The mutations that produced this individual from the parent, in
+    /// application order — one entry per step, all drawn sequentially from
+    /// the one derivation stream (so `genesis mutate --steps ops.len()`
+    /// reproduces the chain). Sidecars written before multi-mutation
+    /// children existed (search-01) carry a single `op` field instead;
+    /// both forms load.
+    pub ops: Vec<MutationOp>,
     /// Search master seed and this individual's derivation coordinates:
     /// stream = derive(search_seed, [MUTATE_TAG, generation, individual]).
     pub search_seed: u64,
@@ -81,6 +87,44 @@ pub struct AncestryRecord {
     /// output directory.
     pub config: String,
     pub rules: String,
+}
+
+/// Deserialization shim: accepts both the current `ops` list and the
+/// pre-multi-mutation single-`op` form the committed search-01 sidecars use.
+/// When both are present (never written by any build), the list wins.
+#[derive(Deserialize)]
+struct AncestryRecordDe {
+    id: String,
+    parent: Option<String>,
+    #[serde(default)]
+    op: Option<MutationOp>,
+    #[serde(default)]
+    ops: Vec<MutationOp>,
+    search_seed: u64,
+    generation: u64,
+    individual: u64,
+    config: String,
+    rules: String,
+}
+
+impl From<AncestryRecordDe> for AncestryRecord {
+    fn from(de: AncestryRecordDe) -> Self {
+        let ops = if de.ops.is_empty() {
+            de.op.into_iter().collect()
+        } else {
+            de.ops
+        };
+        AncestryRecord {
+            id: de.id,
+            parent: de.parent,
+            ops,
+            search_seed: de.search_seed,
+            generation: de.generation,
+            individual: de.individual,
+            config: de.config,
+            rules: de.rules,
+        }
+    }
 }
 
 impl AncestryRecord {
@@ -676,12 +720,15 @@ mod tests {
         let rec = AncestryRecord {
             id: "g003-i07".into(),
             parent: Some("g002-i01".into()),
-            op: Some(MutationOp::JitterRule {
-                rule: 2,
-                field: "probability".into(),
-                old: 0.1,
-                new: 0.117,
-            }),
+            ops: vec![
+                MutationOp::JitterRule {
+                    rule: 2,
+                    field: "probability".into(),
+                    old: 0.1,
+                    new: 0.117,
+                },
+                MutationOp::DropRule { rule: 0 },
+            ],
             search_seed: 42,
             generation: 3,
             individual: 7,
@@ -696,5 +743,51 @@ mod tests {
         let back = AncestryRecord::load(&path).unwrap();
         std::fs::remove_dir_all(&dir).ok();
         assert_eq!(back, rec);
+    }
+
+    /// Sidecars written before multi-mutation children existed carry a
+    /// single `op: Option<MutationOp>` — the committed search-01 artifacts
+    /// are in this form and must keep loading.
+    #[test]
+    fn ancestry_record_loads_pre_multi_mutation_form() {
+        let legacy = r#"(
+    id: "g005-i004",
+    parent: Some("g004-i007"),
+    op: Some(RewireCondition(
+        rule: 2,
+        side: "self_cond",
+        from: "energy",
+        to: "matter",
+    )),
+    search_seed: 20260713,
+    generation: 5,
+    individual: 4,
+    config: "g005/g005-i004.config.ron",
+    rules: "g005/g005-i004.pack.ron",
+)"#;
+        let rec: AncestryRecord = ron::from_str(legacy).unwrap();
+        assert_eq!(
+            rec.ops,
+            vec![MutationOp::RewireCondition {
+                rule: 2,
+                side: "self_cond".into(),
+                from: "energy".into(),
+                to: "matter".into(),
+            }]
+        );
+        // A seed sidecar in the legacy form: op: None → empty ops.
+        let seed_legacy = r#"(
+    id: "g000-i001",
+    parent: None,
+    op: None,
+    search_seed: 20260713,
+    generation: 0,
+    individual: 1,
+    config: "g000/g000-i001.config.ron",
+    rules: "g000/g000-i001.pack.ron",
+)"#;
+        let rec: AncestryRecord = ron::from_str(seed_legacy).unwrap();
+        assert!(rec.ops.is_empty());
+        assert!(rec.parent.is_none());
     }
 }
