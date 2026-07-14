@@ -1,0 +1,61 @@
+// The shipped-content corpus at the SCREEN horizon: the same runs as
+// sweeps/shipped-packs.ron, all at 3 000 ticks / 30 observer samples —
+// the horizon the search loop screens at (sweeps/search-01.ron and
+// successors).
+//
+// Why this exists (search-01 finding 5, generalized): the 20k corpus
+// baseline and a search's 3k screens are not comparable — different
+// horizons aggregate different timelines — so the first search could
+// only say "no discovered regime beats the corpus" by paying for 20k
+// evaluations of every champion, which is hours per bonded regime.
+// This sweep gives every shipped pack a row at the screen horizon, so
+// screen-fitness comparisons are apples-to-apples and a champion that
+// fails to beat the corpus *here* never needs its 20k evaluation at all.
+// The 20k baseline remains the exit-criterion authority; this is the
+// cheap first gate.
+//
+//   genesis sweep --spec sweeps/shipped-packs-3k.ron --out <results-dir>
+//
+// Committed results: docs/research/sweeps/2026-07-14-shipped-packs-3k/
+#![enable(implicit_some)]
+(
+    ticks: 3000,
+    every: 100,
+    runs: [
+        // Control: pure physics, no interactions.
+        (name: "physics-only"),
+        // Single-mechanism regimes on the default config.
+        (name: "diffusion", rules: "packs/diffusion.ron"),
+        (name: "hoarders", rules: "packs/hoarders.ron"),
+        (name: "chains", rules: "packs/chains.ron"),
+        // Echoes needs a world with information in it (see the 20k spec).
+        (
+            name: "echoes",
+            config: "configs/env-gradient.ron",
+            rules: "packs/echoes.ron",
+        ),
+        (name: "churn", rules: "packs/churn.ron"),
+        // The two-packs-one-engine pair.
+        (name: "actual", rules: "packs/actual.ron"),
+        (name: "sandbox", rules: "packs/sandbox.ron"),
+        // Environment-gated bonding on its canonical gradient world.
+        (
+            name: "bands",
+            config: "configs/env-gradient.ron",
+            rules: "packs/bands.ron",
+        ),
+        // Selection pressure (already 3k in the 20k spec — same row here).
+        (
+            name: "sieve",
+            config: "configs/sieve.ron",
+            rules: "packs/sieve.ron",
+        ),
+        // Kitchen sink: env dynamics + LOD + scripted edits/impact/rift.
+        (
+            name: "full-stack",
+            config: "configs/full-stack.ron",
+            rules: "packs/bands.ron",
+            actions: "scripts/full-stack.ron",
+        ),
+    ],
+)

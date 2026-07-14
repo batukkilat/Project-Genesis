@@ -333,7 +333,14 @@ CLI level. **Sweep driver shipped 2026-07-13** (Q-2026-07-13-B) —
 sequentially through the same `score_run` path, writing per-run records
 plus `table.md` sorted by headline score (batch order cannot show
 through); `sweeps/shipped-packs.ron` is the shipped-content corpus the
-exit criterion measures against.
+exit criterion measures against. **Screen-horizon corpus gate added
+2026-07-14** (`sweeps/shipped-packs-3k.ron` +
+docs/research/sweeps/2026-07-14-shipped-packs-3k.md): the same corpus at
+the search screen horizon (3k ticks, ~2.5 min total) — the cheap first
+gate in front of any 20k champion evaluation; the 20k baseline stays the
+exit-criterion authority. Key finding: the horizon reorders the
+leaderboard (sandbox tops 3k, the condensers top 20k), so the gate
+filters, never verdicts.
 
 Deliverables, in dependency order:
 
