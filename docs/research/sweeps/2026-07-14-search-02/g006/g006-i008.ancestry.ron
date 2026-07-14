@@ -1,0 +1,24 @@
+(
+    id: "g006-i008",
+    parent: Some("g005-i003"),
+    ops: [
+        DropRule(
+            rule: 4,
+        ),
+        JitterConfig(
+            field: "initial.energy.hi",
+            old: 1.0,
+            new: 1.5986543,
+        ),
+        JitterConfig(
+            field: "initial.energy.hi",
+            old: 1.5986543,
+            new: 2.6622283,
+        ),
+    ],
+    search_seed: 20260714,
+    generation: 6,
+    individual: 8,
+    config: "g006/g006-i008.config.ron",
+    rules: "g006/g006-i008.pack.ron",
+)

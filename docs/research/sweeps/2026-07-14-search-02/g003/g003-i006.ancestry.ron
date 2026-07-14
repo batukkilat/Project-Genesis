@@ -1,0 +1,25 @@
+(
+    id: "g003-i006",
+    parent: Some("g002-i006"),
+    ops: [
+        DropRule(
+            rule: 2,
+        ),
+        JitterRule(
+            rule: 2,
+            field: "probability",
+            old: 0.2,
+            new: 0.115023114,
+        ),
+        JitterConfig(
+            field: "physics.information_decay",
+            old: 0.02,
+            new: 0.017076554,
+        ),
+    ],
+    search_seed: 20260714,
+    generation: 3,
+    individual: 6,
+    config: "g003/g003-i006.config.ron",
+    rules: "g003/g003-i006.pack.ron",
+)

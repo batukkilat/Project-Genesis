@@ -1,0 +1,28 @@
+(
+    id: "g001-i005",
+    parent: Some("g000-i000"),
+    ops: [
+        RewireCondition(
+            rule: 0,
+            side: "self_cond",
+            from: "energy",
+            to: "information",
+        ),
+        DuplicateRule(
+            source: 0,
+            new_index: 2,
+            fields: [
+                ("self_cond.information.min", 0.4, 0.70644474),
+                ("bond_create.strength", 4.0, 5.4138985),
+            ],
+        ),
+        DropRule(
+            rule: 0,
+        ),
+    ],
+    search_seed: 20260714,
+    generation: 1,
+    individual: 5,
+    config: "g001/g001-i005.config.ron",
+    rules: "g001/g001-i005.pack.ron",
+)

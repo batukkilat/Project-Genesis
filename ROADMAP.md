@@ -375,14 +375,33 @@ Deliverables, in dependency order:
   lineage displaces chains at once, then plateaus ~1% above the seed —
   the neighborhood is flat at σ=0.3; four instrument lessons recorded
   (screen-horizon lifetime saturation, horizon-aware bond caps,
-  BIND-visibility ridge, corpus-horizon cost). No discovered regime
-  beats the corpus yet.
-- **Selection-pressure experiments**: the standing gap — nothing yet makes
-  information content matter for survival. Author/search for rule packs
-  where information gates survival-relevant actions (env-conditioned decay,
-  info-gated absorb/emit already expressible?); if the schema cannot
-  express such coupling, propose the minimal rule extension in
-  QUESTIONS.md rather than inventing it.
+  BIND-visibility ridge, corpus-horizon cost). **Second run (search-02)
+  2026-07-14** (docs/research/sweeps/2026-07-14-search-02.md), the
+  controlled comparison under instrument v1.1 — same seeds/horizon,
+  bolder steps (σ 0.6 × 3 ops/child): escapes the plateau (+4.5% vs
+  +1%) by *leaving* sieve — the champion lineage strips FUEL/SPLIT/SHED
+  and multiplies information-carrying BIND variants into an accretive
+  imprint-web regime with bounded bond growth; its 6k confirmation
+  runs uncapped (the confirm_bond_cap fix working both ways — its
+  near-tied sibling detonated 900 ticks past the screen and was
+  correctly capped). At the corpus horizon (20k, 489s — affordable,
+  unlike sieve-class regimes) the champion scores **2421.60: third
+  place, beating sandbox/full-stack/chains but not actual (3631) or
+  bands (2712)** — the first discovered regime competitive at 20k. The
+  exit criterion stays open; the sharpened question (findings doc §5):
+  can a non-condensing regime reach 3600+, or does the scalar
+  structurally favor condensation?
+- **Selection-pressure experiments**: **first pack shipped 2026-07-13**
+  (`packs/sieve.ron` + `configs/sieve.ron`) — information gates survival
+  (info-poor particles are absorbable), reproduction (emit requires an
+  information floor), and structure itself (bond create/break are
+  information-gated), against a config-set information decay that makes
+  holding information cost energy forever. The deliverable's schema
+  question is answered: the existing rule vocabulary expresses the
+  coupling — no engine extension was needed. Still open: regimes where
+  the *environment* differentially selects (env-conditioned decay), and
+  whether searched variants of such packs find qualitatively new
+  dynamics.
 - **Findings docs**: each sweep lands docs/research/sweeps/<date>-<topic>.md
   with the config corpus, scores, and what was learned — negative results
   count and prevent re-running dead regions.

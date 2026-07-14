@@ -1,0 +1,32 @@
+(
+    id: "g004-i009",
+    parent: Some("g003-i005"),
+    ops: [
+        JitterRule(
+            rule: 0,
+            field: "radius",
+            old: 4.0,
+            new: 3.3892758,
+        ),
+        DuplicateRule(
+            source: 1,
+            new_index: 4,
+            fields: [
+                ("other_cond.information.max", 0.5, 0.90923375),
+                ("transfer.matter", 0.0, 0.00075531116),
+                ("self_cond.information.min", 0.5, 0.3325545),
+            ],
+        ),
+        JitterRule(
+            rule: 2,
+            field: "transfer.information",
+            old: 0.0,
+            new: 0.0022695824,
+        ),
+    ],
+    search_seed: 20260714,
+    generation: 4,
+    individual: 9,
+    config: "g004/g004-i009.config.ron",
+    rules: "g004/g004-i009.pack.ron",
+)

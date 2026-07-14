@@ -1,0 +1,26 @@
+(
+    id: "g003-i009",
+    parent: Some("g002-i006"),
+    ops: [
+        JitterRule(
+            rule: 0,
+            field: "other_cond.information.max",
+            old: 0.2,
+            new: 0.11749037,
+        ),
+        DropRule(
+            rule: 1,
+        ),
+        JitterRule(
+            rule: 2,
+            field: "transfer.energy",
+            old: 0.0,
+            new: 0.0024367545,
+        ),
+    ],
+    search_seed: 20260714,
+    generation: 3,
+    individual: 9,
+    config: "g003/g003-i009.config.ron",
+    rules: "g003/g003-i009.pack.ron",
+)

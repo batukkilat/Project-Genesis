@@ -1,0 +1,35 @@
+(
+    id: "g006-i007",
+    parent: Some("g004-i009"),
+    ops: [
+        DuplicateRule(
+            source: 2,
+            new_index: 5,
+            fields: [
+                ("transfer.energy", 0.0, 0.0020375429),
+                ("other_cond.information.min", 0.5, 0.35307962),
+                ("bond_create.strength", 2.0, 1.1918519),
+            ],
+        ),
+        DuplicateRule(
+            source: 5,
+            new_index: 6,
+            fields: [
+                ("transfer.energy", 0.0020375429, 0.0024432437),
+                ("bond_create.strength", 1.1918519, 1.3963261),
+                ("other_cond.information.min", 0.35307962, 0.28364083),
+            ],
+        ),
+        JitterRule(
+            rule: 3,
+            field: "transfer.information",
+            old: 0.0021967995,
+            new: 0.0018039837,
+        ),
+    ],
+    search_seed: 20260714,
+    generation: 6,
+    individual: 7,
+    config: "g006/g006-i007.config.ron",
+    rules: "g006/g006-i007.pack.ron",
+)

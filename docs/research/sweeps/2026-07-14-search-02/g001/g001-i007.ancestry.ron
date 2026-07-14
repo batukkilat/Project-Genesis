@@ -1,0 +1,34 @@
+(
+    id: "g001-i007",
+    parent: Some("g000-i000"),
+    ops: [
+        JitterRule(
+            rule: 0,
+            field: "transfer.information",
+            old: 0.0,
+            new: 0.00019714952,
+        ),
+        DuplicateRule(
+            source: 0,
+            new_index: 2,
+            fields: [
+                ("transfer.matter", 0.0, 0.000760815),
+                ("transfer.information", 0.00019714952, 0.00011511588),
+            ],
+        ),
+        DuplicateRule(
+            source: 2,
+            new_index: 3,
+            fields: [
+                ("transfer.energy", 0.0, 0.000018379927),
+                ("other_cond.energy.min", 0.4, 0.41673788),
+                ("probability", 0.15, 0.16425292),
+            ],
+        ),
+    ],
+    search_seed: 20260714,
+    generation: 1,
+    individual: 7,
+    config: "g001/g001-i007.config.ron",
+    rules: "g001/g001-i007.pack.ron",
+)

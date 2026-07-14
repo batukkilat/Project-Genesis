@@ -1,0 +1,29 @@
+(
+    id: "g003-i007",
+    parent: Some("g002-i000"),
+    ops: [
+        DropRule(
+            rule: 0,
+        ),
+        RewireCondition(
+            rule: 0,
+            side: "other_cond",
+            from: "information",
+            to: "energy",
+        ),
+        DuplicateRule(
+            source: 1,
+            new_index: 3,
+            fields: [
+                ("probability", 0.1, 0.059699632),
+                ("transfer.matter", 0.00017486204, 0.00012809034),
+                ("radius", 4.0, 5.056699),
+            ],
+        ),
+    ],
+    search_seed: 20260714,
+    generation: 3,
+    individual: 7,
+    config: "g003/g003-i007.config.ron",
+    rules: "g003/g003-i007.pack.ron",
+)

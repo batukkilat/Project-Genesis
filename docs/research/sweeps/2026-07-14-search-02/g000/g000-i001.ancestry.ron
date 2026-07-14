@@ -1,0 +1,10 @@
+(
+    id: "g000-i001",
+    parent: None,
+    ops: [],
+    search_seed: 20260714,
+    generation: 0,
+    individual: 1,
+    config: "g000/g000-i001.config.ron",
+    rules: "g000/g000-i001.pack.ron",
+)

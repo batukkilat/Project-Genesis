@@ -1,0 +1,32 @@
+(
+    id: "g005-i001",
+    parent: Some("g004-i006"),
+    ops: [
+        JitterRule(
+            rule: 1,
+            field: "transfer.energy",
+            old: 0.0,
+            new: 0.0010530312,
+        ),
+        RewireCondition(
+            rule: 3,
+            side: "other_cond",
+            from: "information",
+            to: "energy",
+        ),
+        DuplicateRule(
+            source: 4,
+            new_index: 5,
+            fields: [
+                ("transfer.matter", 0.0, 0.00033222372),
+                ("transfer.information", 0.0023770374, 0.0013706652),
+                ("transfer.energy", 0.00016995514, 0.00028019963),
+            ],
+        ),
+    ],
+    search_seed: 20260714,
+    generation: 5,
+    individual: 1,
+    config: "g005/g005-i001.config.ron",
+    rules: "g005/g005-i001.pack.ron",
+)
