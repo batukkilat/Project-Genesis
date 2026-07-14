@@ -5,6 +5,122 @@ owner: full technical vocabulary, explained rather than simplified.
 
 ---
 
+## 2026-07-14 — cloud night shifts 3 & 4 (Fable)
+
+Shift 3 (the evening session) was cut off by the usage window before its
+wind-down, so its three commits went unlogged; this entry covers both
+shifts. Shift 3 pushed: `73617ac` search instrument v1.1
+(Q-2026-07-14-A), `b8291cd` screen-horizon corpus sweep + findings,
+`4e9a53d` search-02 spec. Shift 4 (this one) pushed: `146682f` —
+search-02 executed end-to-end, its findings doc, the champion's
+20k-horizon score record, and ROADMAP currency (including the stale
+selection-pressure bullet, which still described the gap the sieve pack
+closed on 2026-07-13).
+
+**What changed and why.** Shift 3 turned search-01's two instrument
+lessons into code. `mutations_per_child` lets a search apply k mutations
+to one child drawn sequentially from the child's single derivation
+stream — bitwise the chain `genesis mutate --steps k` draws, so every
+child remains reproducible by one hand command; ancestry sidecars now
+record the full operator chain, and the committed search-01 sidecars
+(single-op form) still load through a deserialization shim.
+`confirm_bond_cap` gives the confirmation stage its own circuit
+breaker, because a bond cap is a per-evaluation *cost* bound and bonds
+grow with the horizon — one cap sized for the 3k screen mathematically
+kills every 6k confirmation (search-01 measured exactly that). Shift 3
+also scored the whole shipped corpus at the 3k screen horizon, the
+cheap gate that makes search screens directly comparable to shipped
+content without hours-long 20k runs. Shift 4 then ran the experiment
+those pieces exist for: **search-02**, the controlled comparison —
+identical seeds, screen horizon, observer, and fitness to search-01,
+differing only in step size (σ 0.6, three ops per child vs σ 0.3, one)
+and the confirmation cap. The result is the best kind: a clean answer.
+Compound steps escaped the plateau search-01 diagnosed (+4.5% over the
+sieve seed vs +1%), and they escaped it by *leaving* sieve — the
+champion lineage dropped FUEL and SPLIT in one generation-1 child,
+dropped SHED two generations later, and multiplied information-carrying
+bond-creation rules into a regime nobody authored: an accretive
+imprint-web (no reproduction, no bond turnover, information riding on
+bond creation itself) whose bond count stays bounded where sieve's runs
+away. Because it is cheap to evaluate, shift 4 also ran the 20k
+corpus-horizon evaluation search-01 could only propose: the discovered
+regime scores 2421.60 — third of the corpus, beating
+sandbox/full-stack/chains, 11% short of bands and 33% short of actual.
+The Phase 6.5 exit criterion (beat *every* shipped pack) stays open,
+but for the first time the gap is a measured number with a shape: the
+two packs still ahead earn their headline through slow condensation,
+the regime class fitness v1 deliberately discounts.
+
+**How it was proven.** Shift 3's features carry three targeted tests
+(multi-mutation children byte-reproduce from the parent's on-disk
+artifacts via the recorded op chain; confirm cap overrides screen cap
+so a capped-at-screen world confirms its full horizon; legacy
+single-op sidecars deserialize). Search-02 itself is a committed,
+byte-reproducible artifact: same build + same spec reproduces every
+file including all 62 state hashes (the property the search's own
+end-to-end test pins). The 3k corpus sweep cross-checked determinism
+across three builds — sieve's and chains' state hashes reproduced
+bit-for-bit from records committed by builds `d726376` and `414fc7e`
+respectively — three builds, one platform, identical bits, exactly as
+the determinism contract requires (tooling commits cannot move sim
+bits, and now that's observed, not assumed). This shift re-ran the full
+workspace suite (17 suites), clippy (zero warnings), and fmt on the
+fresh box before starting and at wind-down; all green. `genesis verify`
+was not run: no commit in either shift touches simulation code, so
+nothing could alter replay identity (the gate exists for physics/sim
+changes). What the tests cannot catch, stated honestly: whether fitness
+v1 selects for anything scientifically interesting is judged by humans
+reading findings docs, not by any assertion — and the champion's
+"possibly growing" observer hypothesis firing at confidence 1.0 on a
+one-way accretion process (finding 2) shows the metric family cannot
+yet distinguish self-maintenance from mere accumulation.
+
+**What to watch.** (1) The champion regime is *persistent but not
+self-renewing* — population only shrinks, bonds only accrete. It climbs
+the scalar and the fitness, but whether an accretive web is more
+interesting than a condensing blob is a judgment the metrics cannot
+make; the sharpened question is recorded in the findings doc §5: can
+any non-condensing regime reach actual's 3631, or does the scalar
+structurally favor condensation? If the latter, the exit criterion
+itself may need an owner-level look (parked as a question only when
+evidence accumulates — not yet). (2) `g006-i000`, 0.17% behind the
+champion at the screen, detonates 12× in 900 ticks past the screen
+horizon — screening alone cannot see a detonation scheduled just past
+its window, so `confirm_top ≥ 2` should be treated as a floor, and any
+future "champion" claim should cite its confirmation record, not its
+screen. (3) The findings docs now assert "byte-reproducible from the
+spec" for search-02 without this box having re-run the whole search
+twice (the property is pinned by the unit test on a tiny search, and
+search-01 verified it at full scale); a paranoid reviewer could re-run
+search-02 and diff. (4) Shift 3 ended unlogged — the usage window can
+cut a session between its last feature commit and its wind-down;
+worth knowing that the three commits it left were nonetheless complete
+units (tests + docs in the same commit), which is what made covering
+for it cheap.
+
+**Concept of the shift: why compound mutations cross valleys single
+mutations cannot.** Truncation selection keeps only the fittest few, so
+a child whose single mutation *lowers* fitness is discarded immediately
+— which means a plain evolutionary loop can only walk uphill. That is
+fine on smooth terrain, but search-01 measured the sieve neighborhood
+as a plateau ringed by cliffs: dropping any load-bearing rule alone
+(say BIND) zeroes fitness, so every one-step path off the plateau leads
+through a valley the selector never lets a lineage enter. Applying
+three mutations before evaluation changes the geometry: the
+intermediate states are never scored, so a child can take one lethal
+step and two compensating ones, landing across the valley in a single
+generation — selection judges only the endpoint. Search-02's decisive
+child did exactly this (dropping two rules *and* re-aiming an initial
+quantity in one step), and its lineage went on to strip and rebuild the
+pack into a regime no single-step walk could have reached. The general
+principle — evaluate less often than you perturb, and you can tunnel
+through fitness valleys at the cost of a noisier search — is the same
+trade simulated annealing and macro-mutation literature make, and it is
+why `mutations_per_child` is a spec knob rather than a constant: step
+size *is* the exploration/exploitation dial.
+
+---
+
 ## 2026-07-14 — cloud night shift 2 (Fable)
 
 Commits pushed: `375a548` search generation loop (Q-2026-07-13-C),
