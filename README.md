@@ -9,6 +9,7 @@ An Artificial Life Research Sandbox: the emergence of complexity from first prin
 - **[ROADMAP.md](ROADMAP.md)** — the phased plan (canonical). Phases 1–3 complete; Phase 4 (environment) and Phase 5 (Observer) exit criteria pass; Phase 6 (rendering) underway — extraction core landed, windowed app next.
 - **[Prompts/spec/](Prompts/spec)** — per-system specifications.
 - **[packs/](packs)** — authored interaction rule packs (RON); a pack is content, not code.
+- **[docs/guide/](docs/guide)** — the user guide (player/researcher-facing; chapters landing as features settle).
 
 ## Status
 
