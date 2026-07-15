@@ -1,0 +1,28 @@
+(
+    id: "g001-i004",
+    parent: Some("g000-i001"),
+    ops: [
+        DropRule(
+            rule: 6,
+        ),
+        JitterConfig(
+            field: "physics.information_decay",
+            old: 0.02,
+            new: 0.022317955,
+        ),
+        DuplicateRule(
+            source: 2,
+            new_index: 6,
+            fields: [
+                ("self_cond.matter.min", 0.3, 0.5361998),
+                ("transfer.matter", 0.0, 0.00017667569),
+                ("probability", 0.02, 0.012116916),
+            ],
+        ),
+    ],
+    search_seed: 20260715,
+    generation: 1,
+    individual: 4,
+    config: "g001/g001-i004.config.ron",
+    rules: "g001/g001-i004.pack.ron",
+)

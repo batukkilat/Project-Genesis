@@ -1,0 +1,35 @@
+(
+    id: "g003-i004",
+    parent: Some("g002-i006"),
+    ops: [
+        DuplicateRule(
+            source: 3,
+            new_index: 7,
+            fields: [
+                ("transfer.matter", 0.0, 0.0004532139),
+                ("other_cond.information.max", 0.5, 0.8042543),
+                ("self_cond.information.min", 0.5, 0.6584459),
+            ],
+        ),
+        RewireCondition(
+            rule: 5,
+            side: "self_cond",
+            from: "information",
+            to: "matter",
+        ),
+        DuplicateRule(
+            source: 3,
+            new_index: 8,
+            fields: [
+                ("info_copy.noise", 0.1, 0.16758995),
+                ("info_copy.cost", 0.02, 0.027235087),
+                ("other_cond.information.max", 0.5, 0.7456751),
+            ],
+        ),
+    ],
+    search_seed: 20260715,
+    generation: 3,
+    individual: 4,
+    config: "g003/g003-i004.config.ron",
+    rules: "g003/g003-i004.pack.ron",
+)

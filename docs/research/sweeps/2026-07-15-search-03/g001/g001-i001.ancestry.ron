@@ -1,0 +1,25 @@
+(
+    id: "g001-i001",
+    parent: Some("g000-i000"),
+    ops: [
+        DropRule(
+            rule: 1,
+        ),
+        RewireCondition(
+            rule: 4,
+            side: "other_cond",
+            from: "information",
+            to: "energy",
+        ),
+        JitterConfig(
+            field: "physics.attraction",
+            old: 5.0,
+            new: 6.5290585,
+        ),
+    ],
+    search_seed: 20260715,
+    generation: 1,
+    individual: 1,
+    config: "g001/g001-i001.config.ron",
+    rules: "g001/g001-i001.pack.ron",
+)

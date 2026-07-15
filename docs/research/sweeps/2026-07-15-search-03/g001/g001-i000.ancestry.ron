@@ -1,0 +1,28 @@
+(
+    id: "g001-i000",
+    parent: Some("g000-i001"),
+    ops: [
+        DropRule(
+            rule: 2,
+        ),
+        JitterConfig(
+            field: "initial.matter.lo",
+            old: 0.1,
+            new: 0.068635054,
+        ),
+        DuplicateRule(
+            source: 3,
+            new_index: 6,
+            fields: [
+                ("transfer.information", 0.0, 0.0028559146),
+                ("probability", 0.05, 0.046459462),
+                ("transfer.energy", 0.03, 0.035788678),
+            ],
+        ),
+    ],
+    search_seed: 20260715,
+    generation: 1,
+    individual: 0,
+    config: "g001/g001-i000.config.ron",
+    rules: "g001/g001-i000.pack.ron",
+)

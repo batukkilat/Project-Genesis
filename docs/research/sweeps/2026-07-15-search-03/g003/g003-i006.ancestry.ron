@@ -1,0 +1,29 @@
+(
+    id: "g003-i006",
+    parent: Some("g001-i006"),
+    ops: [
+        JitterRule(
+            rule: 0,
+            field: "other_cond.information.max",
+            old: 0.2,
+            new: 0.20071316,
+        ),
+        JitterRule(
+            rule: 2,
+            field: "probability",
+            old: 0.02,
+            new: 0.01709824,
+        ),
+        JitterRule(
+            rule: 3,
+            field: "probability",
+            old: 0.1,
+            new: 0.06454164,
+        ),
+    ],
+    search_seed: 20260715,
+    generation: 3,
+    individual: 6,
+    config: "g003/g003-i006.config.ron",
+    rules: "g003/g003-i006.pack.ron",
+)

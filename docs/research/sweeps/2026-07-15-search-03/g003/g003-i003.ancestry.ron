@@ -1,0 +1,33 @@
+(
+    id: "g003-i003",
+    parent: Some("g001-i006"),
+    ops: [
+        JitterConfig(
+            field: "initial.energy.hi",
+            old: 1.0,
+            new: 0.9241193,
+        ),
+        DuplicateRule(
+            source: 1,
+            new_index: 7,
+            fields: [
+                ("radius", 4.0, 2.2007675),
+                ("transfer.matter", 0.0, 0.0006163234),
+                ("transfer.energy", 0.0, 0.00041378976),
+            ],
+        ),
+        DuplicateRule(
+            source: 5,
+            new_index: 8,
+            fields: [
+                ("transfer.information", 0.0, 0.0014687716),
+                ("other_cond.information.min", 0.5, 0.44736892),
+            ],
+        ),
+    ],
+    search_seed: 20260715,
+    generation: 3,
+    individual: 3,
+    config: "g003/g003-i003.config.ron",
+    rules: "g003/g003-i003.pack.ron",
+)

@@ -1,0 +1,29 @@
+(
+    id: "g001-i003",
+    parent: Some("g000-i000"),
+    ops: [
+        DuplicateRule(
+            source: 0,
+            new_index: 6,
+            fields: [
+                ("radius", 4.0, 5.155002),
+                ("other_cond.information.max", 0.2, 0.30283204),
+                ("self_cond.matter.min", 0.5, 0.6024536),
+            ],
+        ),
+        JitterRule(
+            rule: 4,
+            field: "other_cond.information.min",
+            old: 0.5,
+            new: 0.48183963,
+        ),
+        DropRule(
+            rule: 5,
+        ),
+    ],
+    search_seed: 20260715,
+    generation: 1,
+    individual: 3,
+    config: "g001/g001-i003.config.ron",
+    rules: "g001/g001-i003.pack.ron",
+)

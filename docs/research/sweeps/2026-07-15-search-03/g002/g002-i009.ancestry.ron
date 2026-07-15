@@ -1,0 +1,29 @@
+(
+    id: "g002-i009",
+    parent: Some("g001-i006"),
+    ops: [
+        RewireCondition(
+            rule: 3,
+            side: "self_cond",
+            from: "information",
+            to: "energy",
+        ),
+        JitterRule(
+            rule: 2,
+            field: "transfer.energy",
+            old: 0.0,
+            new: 0.0023248056,
+        ),
+        JitterRule(
+            rule: 5,
+            field: "transfer.energy",
+            old: 0.0,
+            new: 0.0012843144,
+        ),
+    ],
+    search_seed: 20260715,
+    generation: 2,
+    individual: 9,
+    config: "g002/g002-i009.config.ron",
+    rules: "g002/g002-i009.pack.ron",
+)

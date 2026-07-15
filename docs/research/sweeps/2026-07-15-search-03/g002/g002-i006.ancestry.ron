@@ -1,0 +1,28 @@
+(
+    id: "g002-i006",
+    parent: Some("g001-i006"),
+    ops: [
+        DuplicateRule(
+            source: 5,
+            new_index: 7,
+            fields: [
+                ("transfer.energy", 0.0, 0.0014039015),
+                ("probability", 0.1, 0.17635179),
+            ],
+        ),
+        JitterRule(
+            rule: 0,
+            field: "transfer.energy",
+            old: 0.0,
+            new: 0.0017664488,
+        ),
+        DropRule(
+            rule: 7,
+        ),
+    ],
+    search_seed: 20260715,
+    generation: 2,
+    individual: 6,
+    config: "g002/g002-i006.config.ron",
+    rules: "g002/g002-i006.pack.ron",
+)
