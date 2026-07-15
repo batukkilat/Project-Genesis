@@ -18,4 +18,4 @@ notes* — same pages, two depths.
 | 7 | Player actions, scripts, replay | planned |
 | 8 | [Saves, forks, timelines](08-saves-forks-timelines.md) | ✅ |
 | 9 | [The Observer](09-observer.md) | ✅ |
-| 10 | Performance & scale | planned |
+| 10 | [Performance & scale](10-performance-scale.md) | ✅ |
