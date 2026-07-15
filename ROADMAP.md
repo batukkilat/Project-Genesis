@@ -297,6 +297,11 @@ play-facing first with a *Technical notes* close. Chapters 1, 5–10 are
 writable now against shipped behavior; chapters 2–4 wait on the owner's
 Windows GPU test, which also decides whether a menu screen exists (that
 verdict reshapes onboarding — draft the tutorial chapter last).
+**Writable-today set shipped 2026-07-15**: chapters 1, 5, 6, 7, 8, 9, 10
+landed in docs/guide/ with a ToC README, every command executed verbatim
+on the writing box (script verifies, validation errors, observer
+configs, save/branch flows); root README links the guide. Remaining:
+chapters 2–4 on the planned blockers.
 
 Deliverables:
 
