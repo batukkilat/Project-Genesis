@@ -1,0 +1,55 @@
+// Search 03 — does evolution exploit an environmental cline?
+//
+// packs/gradient-sieve.ron (2026-07-15) makes selection strength vary
+// across space: one env-gated CULL with a raised information floor where
+// field 0 is high. This search puts the flat-world sieve and the
+// cline-world gradient-sieve in ONE pool and lets selection choose. The
+// question (open half of the selection-pressure deliverable): do
+// descendants keep the env-gated rule and exploit the gradient — e.g. by
+// tuning thresholds so the mild west feeds survivors into the harsh
+// east — or does the search strip the rule and revert to flat-world
+// dynamics? Mutation operators never touch env_cond gates or the config's
+// env spec (search v1 scope), so a lineage keeps its world's geography;
+// what can change is every scalar around it, and whether the gated rule
+// survives DropRule pressure.
+//
+// Instrument settings carried unchanged from search-02 (v1.1): sigma 0.6,
+// 3 ops/child, screen 3k/every 100. Caps: gradient-sieve carries ~154k
+// bonds at 3k (sieve ~166k), both inside the 200k screen cap; 600k
+// confirmation cap per the horizon-sizing rule (expected ~2x screen bonds
+// at 6k, x2 headroom). Fresh search seed; this is NOT a controlled
+// comparison with search-02 (different seed pool by design — the control
+// here is internal: two seed lineages, one pool).
+//
+// Budget: 2 seeds + 6 generations x 10 children = 62 screens at 3k, all
+// sieve-class (expect ~90 min on the 4-core cloud box), top 2 confirmed
+// at 6k.
+//
+//   genesis search --spec sweeps/search-03.ron --out <dir>
+#![enable(implicit_some)]
+(
+    seed: 20260715,
+    generations: 6,
+    population: 10,
+    survivors: 3,
+    sigma: 0.6,
+    mutations_per_child: 3,
+    screen_ticks: 3000,
+    every: 100,
+    confirm_ticks: 6000,
+    confirm_top: 2,
+    bond_cap: 200000,
+    confirm_bond_cap: 600000,
+    seeds: [
+        (
+            name: "sieve",
+            config: Some("configs/sieve.ron"),
+            rules: "packs/sieve.ron",
+        ),
+        (
+            name: "gradient-sieve",
+            config: Some("configs/gradient-sieve.ron"),
+            rules: "packs/gradient-sieve.ron",
+        ),
+    ],
+)
