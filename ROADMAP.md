@@ -395,7 +395,16 @@ Deliverables, in dependency order:
   bands (2712)** — the first discovered regime competitive at 20k. The
   exit criterion stays open; the sharpened question (findings doc §5):
   can a non-condensing regime reach 3600+, or does the scalar
-  structurally favor condensation? **Answered 2026-07-15**
+  structurally favor condensation? **Third run (search-03) 2026-07-15**
+  (docs/research/sweeps/2026-07-15-search-03.md): sieve vs
+  gradient-sieve in one pool under the same instrument — the cline-world
+  lineage swept ranks 1–26 and generation 3 *duplicated* the env-gated
+  cull under uniform drop pressure; the confirmed champion (g005-i005,
+  fitness 88.90 at 6k, uncapped) holds +50% structure-held information
+  at *half* the seed's bonds, i.e. fitness climbed by reducing bond
+  mass. The screen's #1 detonated in confirmation for the second search
+  running — `confirm_top ≥ 2` is empirically the floor. The anatomy
+  question above was **answered 2026-07-15**
   (docs/research/sweeps/2026-07-15-headline-anatomy.md): it structurally
   favors condensation — a per-term decomposition of complexity on real
   structures (observer instrument extension) plus a maximum-entropy
@@ -430,8 +439,15 @@ Deliverables, in dependency order:
   process difference snapshots hide. At the 3k gate: fitness 76.09
   (above sieve's 75.70) from 7% fewer bonds. Still open: whether
   searched variants of env-selection packs find qualitatively new
-  dynamics (mutation operators keep env gates intact; a
-  search-02-shaped run costs ~70 min on the cloud box).
+  dynamics — **answered 2026-07-15 by search-03**
+  (docs/research/sweeps/2026-07-15-search-03.md): with sieve and
+  gradient-sieve competing in one pool, the cline-world lineage swept
+  ranks 1–26, generation 3 *duplicated* the env-gated cull under
+  uniform DropRule pressure (every top-10 pack carries 2–3 gates where
+  the seed had one), and a fully de-gated branch survived but never
+  led. The deliverable's both halves are now answered; remaining
+  follow-ups (gate divergence under longer searches, 20k confirmation
+  of the regime family) are recorded in the findings doc.
 - **Findings docs**: each sweep lands docs/research/sweeps/<date>-<topic>.md
   with the config corpus, scores, and what was learned — negative results
   count and prevent re-running dead regions.

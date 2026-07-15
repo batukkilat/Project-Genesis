@@ -1,0 +1,25 @@
+(
+    id: "g006-i002",
+    parent: Some("g005-i009"),
+    ops: [
+        DropRule(
+            rule: 3,
+        ),
+        JitterConfig(
+            field: "initial.speed.hi",
+            old: 1.1713238,
+            new: 1.0366579,
+        ),
+        JitterRule(
+            rule: 0,
+            field: "radius",
+            old: 4.0,
+            new: 4.000875,
+        ),
+    ],
+    search_seed: 20260715,
+    generation: 6,
+    individual: 2,
+    config: "g006/g006-i002.config.ron",
+    rules: "g006/g006-i002.pack.ron",
+)
