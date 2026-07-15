@@ -13,7 +13,7 @@ notes* — same pages, two depths.
 | 2 | Install & run | planned — awaits the Windows GPU verdict |
 | 3 | First world (tutorial) | planned — drafted last, after ch. 2/4 settle |
 | 4 | The windowed app, in full | planned — awaits the step 5 UI half |
-| 5 | The headless CLI, in full | planned |
+| 5 | [The headless CLI, in full](05-headless-cli.md) | ✅ |
 | 6 | Authoring worlds | planned |
 | 7 | Player actions, scripts, replay | planned |
 | 8 | Saves, forks, timelines | planned |
