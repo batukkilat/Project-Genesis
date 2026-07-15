@@ -340,6 +340,16 @@ pub struct StructureMetrics {
     /// rank distinctly: the ring loses the entropy term (all degrees equal),
     /// the blob wins the connectivity term.
     pub complexity: f64,
+    /// The heterogeneity term of `complexity` on its own: Shannon entropy of
+    /// the member bond-degree histogram, in nats. Reported separately so
+    /// analyses can see *which* term carries a complexity value (the
+    /// 2026-07-14 search-02 finding 5 question); `ln(size) + degree_entropy
+    /// + ln(1 + mean_degree)` always reproduces `complexity` exactly.
+    pub degree_entropy: f64,
+    /// The connectivity term's argument: mean member bond degree. Also the
+    /// per-structure form of the condensation diagnostic (the search marks
+    /// worlds whose *global* mean degree exceeds its threshold).
+    pub mean_degree: f64,
     /// Total information currently held by members — does the structure
     /// hold signal, or leak it? (Trend over its lifetime lives in the
     /// timeline, not here.)
@@ -397,6 +407,8 @@ pub fn structure_metrics(
                 persistence: s.age,
                 stability: s.stability,
                 complexity: (n as f64).ln() + entropy + (1.0 + mean_degree).ln(),
+                degree_entropy: entropy,
+                mean_degree,
                 information: s
                     .members
                     .iter()
@@ -854,6 +866,26 @@ mod tests {
     }
 
     #[test]
+    fn complexity_decomposition_is_exact() {
+        // The reported terms must reproduce the scalar bit-for-bit — an
+        // analysis reading the decomposition never has to re-derive it.
+        for m in metrics_of(&[(1, 2), (2, 3), (3, 4), (1, 4), (1, 3), (7, 8)]) {
+            assert_eq!(
+                m.complexity,
+                (m.size as f64).ln() + m.degree_entropy + (1.0 + m.mean_degree).ln(),
+                "structure {}: terms must sum to the committed scalar",
+                m.id
+            );
+        }
+        // And the terms themselves are the documented quantities: the
+        // 4-cycle-with-chord has degrees [2,2,3,3] — entropy ln 2, mean 2.5.
+        let m = metrics_of(&[(1, 2), (2, 3), (3, 4), (1, 4), (1, 3)])[0];
+        assert_eq!(m.size, 4);
+        assert!((m.degree_entropy - 2.0f64.ln()).abs() < 1e-12);
+        assert_eq!(m.mean_degree, 2.5);
+    }
+
+    #[test]
     fn metrics_carry_identity_persistence_and_information() {
         let s = snap(&[(1, 2), (2, 3), (7, 8)]);
         let comps = bond_components(&s);
@@ -894,6 +926,8 @@ mod tests {
             persistence,
             stability,
             complexity: 0.0,
+            degree_entropy: 0.0,
+            mean_degree: 0.0,
             information: 0.0,
         }
     }

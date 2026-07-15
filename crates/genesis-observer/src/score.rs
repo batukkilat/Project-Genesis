@@ -238,6 +238,8 @@ mod tests {
             persistence,
             stability: 1.0,
             complexity,
+            degree_entropy: 0.0,
+            mean_degree: 0.0,
             information,
         }
     }
