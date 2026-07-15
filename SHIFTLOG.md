@@ -5,6 +5,114 @@ owner: full technical vocabulary, explained rather than simplified.
 
 ---
 
+## 2026-07-15 — cloud night shift 1 (Fable)
+
+Pushed: `b02bf71` observer complexity decomposition; `23ef9ce` headline
+anatomy + Q-2026-07-15-A; `a0d3be8` gradient-sieve pack; `ddc0db8`
+search-03 spec; `0686eb5` `6478abd` `485b4e3` `e1e244d` `2539f6b`
+`ec30d4a` `ebd999b` user guide chapters 1, 5, 6, 7, 8, 9, 10 + ToC;
+`066ac3d` + `2c00969` search-03 run + findings; and this entry. A
+sibling session pushed `0c8a400` mid-night, correcting a bond-count
+misquote in the search-03 findings (details in *What to watch*).
+
+**What changed and why.** Three threads.
+
+*Thread 1 — the anatomy of the exit criterion.* Search-02 ended asking
+whether any non-condensing regime can reach actual's 3631 on the
+persistence × complexity headline. To answer with measurement instead
+of suspicion, StructureMetrics now reports the two non-size terms of
+the complexity scalar (degree entropy in nats, mean bond degree)
+alongside the committed value — observer reporting only, no replay
+surface, decomposition tested to reproduce the scalar bit-for-bit.
+Probing five regimes at 3k and the search-02 champion at 20k showed
+three regime classes with distinct term profiles, and a
+maximum-entropy argument closed the question: among integer degree
+distributions with mean d̄, entropy is bounded by the geometric
+envelope, so a structure respecting the condensation mark (d̄ ≤ 50) has
+complexity ≤ ln(S) + 8.834. Beating actual needs an ≥11,192-member
+single structure at maximal entropy and unbroken persistence — larger
+than any population a corpus run has reached; at *observed* entropy
+(≤3.56 nats) the requirement is ~43,000 particles, four times anything
+simulated. The 20k leaderboard is a condensation ladder, and the
+search-02 champion itself crosses the mark between 3k and 20k. The
+criterion and the ratified condensation-discounting fitness therefore
+pull in opposite directions — the owner-level fork the 2026-07-14
+shift log predicted, now parked as Q-2026-07-15-A with a
+recommendation (score the criterion on a bounded-degree headline
+reported beside the raw one).
+
+*Thread 2 — the environment as selector.* gradient-sieve closes the
+selection-pressure deliverable: the sieve plus exactly one env-gated
+cull whose information floor is 2× higher where field 0 is high — a
+cline of selection strength, no rule mentioning position. Search-03
+then put sieve and gradient-sieve in one pool: the cline lineage swept
+ranks 1–26, generation 3 *duplicated* the env-gated cull under uniform
+drop pressure, and the confirmed champion holds +50% structure-held
+information at half the seed's bonds (a 3k-screen comparison: 154k →
+81k) — fitness climbed by *reducing* bond mass, the opposite of the
+direction the headline scalar prices. Whether this regime family holds
+up at the 20k corpus horizon is deliberately left open: a first attempt
+at that evaluation was cut off by a container restart, and the
+corrected bond arithmetic (see below) says it may be an hours-long
+sieve-class run — to be *measured* on a shift that can afford it, not
+assumed.
+
+*Thread 3 — the user guide.* The writable-today set (chapters 1,
+5–10) landed per the parked plan: play-facing first, Technical notes
+close, every command executed verbatim on this box.
+
+**How it was proven.** Anatomy probes reproduce their committed score
+records to all printed digits across four earlier builds — determinism
+observed again, cross-build and cross-code-path (the search's seed
+evaluation bit-matches the standalone score record, finding 5).
+gradient-sieve ships with a causal test (same pack, two uniform
+climates differing only in the field value: the open gate costs ~120
+particles and thins the targeted band by a third) and a verify run
+(DETERMINISTIC, fresh/resume/1-thread). Search-03 is byte-reproducible
+from its committed spec. Wind-down: 17 test suites green, clippy zero
+warnings, fmt clean; all five shipped scripts re-verified
+DETERMINISTIC while writing chapter 7. What the tests cannot catch:
+the ceiling argument's realism margin rests on observed entropy
+staying ≤~3.6 — a regime engineered for degree diversity could shrink
+the gap (not erase it: the geometric bound is absolute at fixed
+population); and the regional-equilibrium finding (below) was
+established at test scale, not shipped scale.
+
+**What to watch.** (1) Q-2026-07-15-A now gates the Phase 6.5 exit
+criterion's meaning; searches remain productive on fitness, but no
+search should be judged by the raw headline until the owner rules.
+(2) The gradient-sieve test's margins (population −50, band −20 on
+measured −124/−31) are deterministic per build but will need re-tuning
+if any universe-changing engine change lands — the test comment says
+so. (3) Search-03's screen champion detonated in confirmation, the
+second time running: treat confirm_top ≥ 2 as a floor, and treat any
+screen-only number as provisional. (4) The checkpoint commit 066ac3d
+holds write-once partial artifacts; harmless, but the completion
+commit 2c00969 is the one to cite. (5) The original search-03 findings
+doc quoted the champion's 3k bond count (81k) as if it were the 6k
+figure to argue a 20k evaluation was affordable; the sibling session's
+`0c8a400` corrects it in place (the confirmation record shows 225,403
+bonds at 6k — 2.8× per horizon doubling). The lesson is annotated per
+the divergence-is-written rule, and this entry's own claims use the
+3k-vs-3k comparison, which stands.
+
+**Concept of the shift: an aggregate can be gamed by whatever grows
+without bound inside it.** The complexity metric sums three logs:
+size, degree entropy, connectivity. Two of the three grow monotonically
+under condensation — mean degree directly, entropy through its
+geometric envelope H_geom(d̄) ≈ ln d̄ + 1 — so a metric meant to reward
+"organized persistence" turns out to price *welding* above everything
+else once degree growth is unbounded. The general lesson for anyone
+maintaining this codebase: before optimizing (or evolving) toward any
+scalar, decompose it on real data and ask which term is doing the
+work, and whether anything in the dynamics can inflate that term
+without producing the quality the scalar was named for. The same
+failure mode appeared twice tonight at different scales: the headline
+rewards condensation the fitness was designed to reject, and *possibly
+growing* fires at confidence 1.0 on one-way accretion. Metrics are
+hypotheses about what matters; decomposition is how you test them.
+
+---
 ## 2026-07-14 — cloud night shifts 3 & 4 (Fable)
 
 Shift 3 (the evening session) was cut off by the usage window before its
