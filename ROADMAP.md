@@ -390,7 +390,21 @@ Deliverables, in dependency order:
   bands (2712)** — the first discovered regime competitive at 20k. The
   exit criterion stays open; the sharpened question (findings doc §5):
   can a non-condensing regime reach 3600+, or does the scalar
-  structurally favor condensation?
+  structurally favor condensation? **Answered 2026-07-15**
+  (docs/research/sweeps/2026-07-15-headline-anatomy.md): it structurally
+  favors condensation — a per-term decomposition of complexity on real
+  structures (observer instrument extension) plus a maximum-entropy
+  ceiling shows no structure respecting the condensation mark can beat
+  actual's 3631 at any observed population (marked-sparse ceiling
+  3598–3614; at observed degree entropy the requirement is a single
+  ≥43k-particle structure, 4× anything ever simulated). The 20k
+  leaderboard is a condensation ladder, and the champion itself crosses
+  the mark between 3k and 20k. This is the evidence-backed
+  missing-ingredient statement the exit criterion names as its second
+  branch; whether the criterion is amended (bounded-degree headline),
+  kept, or reinterpreted is owner-level and parked as Q-2026-07-15-A —
+  the phase is not marked done on the strength of this session's own
+  analysis.
 - **Selection-pressure experiments**: **first pack shipped 2026-07-13**
   (`packs/sieve.ron` + `configs/sieve.ron`) — information gates survival
   (info-poor particles are absorbable), reproduction (emit requires an

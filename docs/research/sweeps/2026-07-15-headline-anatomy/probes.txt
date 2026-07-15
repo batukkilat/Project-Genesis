@@ -1,0 +1,54 @@
+== actual-3k: 30 samples, final tick 3000, particles 10021, bonds 958, world mean_deg 0.19
+   headline   208.009 = P 29 x C 7.173  @ tick 2900 structure 67
+   headline row: size    111 -> ln  4.710 | H  1.353 | mean_deg     2.036 -> ln(1+d)  1.111 | C   7.173
+   peak C row   (tick 3000, id 1473, P 2): size    376 -> ln  5.930 | H  1.410 | mean_deg     2.069 -> ln(1+d)  1.121 | C   8.461
+   trajectory of structure 67:
+     tick    100: size      2 -> ln  0.693 | H  0.000 | mean_deg     1.000 -> ln(1+d)  0.693 | C   1.386
+     tick   1500: size     11 -> ln  2.398 | H  1.067 | mean_deg     1.818 -> ln(1+d)  1.036 | C   4.501
+     tick   2900: size    111 -> ln  4.710 | H  1.353 | mean_deg     2.036 -> ln(1+d)  1.111 | C   7.173
+
+== bands-3k: 30 samples, final tick 3000, particles 10000, bonds 11836, world mean_deg 2.37
+   headline   291.470 = P 30 x C 9.716  @ tick 3000 structure 290
+   headline row: size     42 -> ln  3.738 | H  2.784 | mean_deg    23.381 -> ln(1+d)  3.194 | C   9.716
+   peak C row   (tick 2600, id 1146, P 9): size     54 -> ln  3.989 | H  3.060 | mean_deg    35.519 -> ln(1+d)  3.598 | C  10.646
+   trajectory of structure 290:
+     tick    100: size      6 -> ln  1.792 | H  0.451 | mean_deg     2.333 -> ln(1+d)  1.204 | C   3.446
+     tick   1600: size     10 -> ln  2.303 | H  1.471 | mean_deg     4.600 -> ln(1+d)  1.723 | C   5.496
+     tick   3000: size     42 -> ln  3.738 | H  2.784 | mean_deg    23.381 -> ln(1+d)  3.194 | C   9.716
+
+== sandbox-3k: 30 samples, final tick 3000, particles 10753, bonds 23073, world mean_deg 4.29
+   headline   369.815 = P 26 x C 14.224  @ tick 3000 structure 613
+   headline row: size   2778 -> ln  7.929 | H  3.557 | mean_deg    14.440 -> ln(1+d)  2.737 | C  14.224
+   peak C row   (tick 3000, id 613, P 26): size   2778 -> ln  7.929 | H  3.557 | mean_deg    14.440 -> ln(1+d)  2.737 | C  14.224
+   trajectory of structure 613:
+     tick    500: size     16 -> ln  2.773 | H  1.264 | mean_deg     2.125 -> ln(1+d)  1.139 | C   5.176
+     tick   1800: size    275 -> ln  5.617 | H  3.127 | mean_deg    10.131 -> ln(1+d)  2.410 | C  11.153
+     tick   3000: size   2778 -> ln  7.929 | H  3.557 | mean_deg    14.440 -> ln(1+d)  2.737 | C  14.224
+
+== sieve-3k: 30 samples, final tick 3000, particles 13866, bonds 165714, world mean_deg 23.90
+   headline   318.552 = P 29 x C 10.985  @ tick 2900 structure 1150
+   headline row: size     61 -> ln  4.111 | H  2.999 | mean_deg    47.148 -> ln(1+d)  3.874 | C  10.985
+   peak C row   (tick 2900, id 1150, P 29): size     61 -> ln  4.111 | H  2.999 | mean_deg    47.148 -> ln(1+d)  3.874 | C  10.985
+   trajectory of structure 1150:
+     tick    100: size     23 -> ln  3.135 | H  2.321 | mean_deg    10.174 -> ln(1+d)  2.414 | C   7.870
+     tick   1600: size     40 -> ln  3.689 | H  0.381 | mean_deg    38.850 -> ln(1+d)  3.685 | C   7.755
+     tick   3000: size     63 -> ln  4.143 | H  0.222 | mean_deg    61.937 -> ln(1+d)  4.142 | C   8.507
+
+== champion-3k: 30 samples, final tick 3000, particles 9497, bonds 62867, world mean_deg 13.24
+   headline   253.867 = P 28 x C 9.067  @ tick 2800 structure 1292
+   headline row: size     37 -> ln  3.611 | H  2.318 | mean_deg    22.054 -> ln(1+d)  3.138 | C   9.067
+   peak C row   (tick 2200, id 948, P 22): size     38 -> ln  3.638 | H  2.146 | mean_deg    33.632 -> ln(1+d)  3.545 | C   9.328
+   trajectory of structure 1292:
+     tick    100: size      5 -> ln  1.609 | H  0.673 | mean_deg     3.600 -> ln(1+d)  1.526 | C   3.809
+     tick   1600: size     13 -> ln  2.565 | H  0.000 | mean_deg    12.000 -> ln(1+d)  2.565 | C   5.130
+     tick   3000: size     37 -> ln  3.611 | H  0.000 | mean_deg    36.000 -> ln(1+d)  3.611 | C   7.222
+
+== champion-20k: 200 samples, final tick 20000, particles 9469, bonds 286452, world mean_deg 60.50
+   headline  2421.601 = P 196 x C 12.355  @ tick 19600 structure 486
+   headline row: size    102 -> ln  4.625 | H  3.516 | mean_deg    66.667 -> ln(1+d)  4.215 | C  12.355
+   peak C row   (tick 13700, id 797, P 137): size    111 -> ln  4.710 | H  3.584 | mean_deg    75.261 -> ln(1+d)  4.334 | C  12.627
+   trajectory of structure 486:
+     tick    100: size      9 -> ln  2.197 | H  1.311 | mean_deg     3.556 -> ln(1+d)  1.516 | C   5.024
+     tick  10100: size     56 -> ln  4.025 | H  0.000 | mean_deg    55.000 -> ln(1+d)  4.025 | C   8.051
+     tick  20000: size    102 -> ln  4.625 | H  0.467 | mean_deg   100.784 -> ln(1+d)  4.623 | C   9.715
+
