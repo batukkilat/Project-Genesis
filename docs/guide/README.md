@@ -15,7 +15,7 @@ notes* — same pages, two depths.
 | 4 | The windowed app, in full | planned — awaits the step 5 UI half |
 | 5 | [The headless CLI, in full](05-headless-cli.md) | ✅ |
 | 6 | [Authoring worlds](06-authoring-worlds.md) | ✅ |
-| 7 | Player actions, scripts, replay | planned |
+| 7 | [Player actions, scripts, replay](07-actions-scripts-replay.md) | ✅ |
 | 8 | [Saves, forks, timelines](08-saves-forks-timelines.md) | ✅ |
 | 9 | [The Observer](09-observer.md) | ✅ |
 | 10 | [Performance & scale](10-performance-scale.md) | ✅ |
