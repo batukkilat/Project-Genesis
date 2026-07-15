@@ -1,0 +1,30 @@
+// World for packs/gradient-sieve.ron — the sieve world plus a selection
+// gradient.
+//
+// Identical to configs/sieve.ron (same seed, scale, quantities, and the
+// information_decay that makes information a maintained quantity) with one
+// addition: a west→east scalar field the pack's CULL-HIGH rule gates on.
+// Field values are replay identity; the name is documentation only.
+(
+    seed: 0,
+    particle_count: 10000,
+    world_width: 1024.0,
+    world_height: 1024.0,
+    ticks_per_second: 60,
+    initial: (
+        matter: (lo: 0.1, hi: 1.0),
+        energy: (lo: 0.0, hi: 1.0),
+        information: (lo: 0.0, hi: 1.0),
+        speed: (lo: 0.0, hi: 2.0),
+    ),
+    physics: (
+        information_decay: 0.02,
+    ),
+    env: (
+        cols: 32,
+        rows: 32,
+        fields: [
+            (name: "pressure", init: GradientX(lo: 0.0, hi: 1.0)),
+        ],
+    ),
+)

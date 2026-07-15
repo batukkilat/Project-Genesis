@@ -52,6 +52,14 @@
             rules: "packs/sieve.ron",
             ticks: 3000,
         ),
+        // Same bond class as sieve (154k bonds by tick 3k), same screen
+        // horizon for the same reason.
+        (
+            name: "gradient-sieve",
+            config: "configs/gradient-sieve.ron",
+            rules: "packs/gradient-sieve.ron",
+            ticks: 3000,
+        ),
         // Kitchen sink: env dynamics + LOD + scripted edits/impact/rift.
         (
             name: "full-stack",

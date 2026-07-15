@@ -40,6 +40,7 @@ genesis init-rules my-pack.ron   # writes a starter pack to edit
 | `sandbox.ron` | anything-goes regime — flows amplify, bonds and copies are free | runaway concentration and info saturation; boiling population |
 | `bands.ron` | environment-gated — bonding only works where env field 0 is mid-range; breaks happen everywhere | structures accumulate only inside the band (pair with `configs/env-gradient.ron`); the environment shapes *where*, never *what* |
 | `sieve.ron` | selection-pressure — information gates survival (info-poor get absorbed), reproduction (only info-rich split), and membership (bonds form between the info-rich, break to the info-poor); config decay makes information a maintained quantity | clusters made of maintained information: what keeps its information above the floor persists, everything else is recycled (pair with `configs/sieve.ron`) |
+| `gradient-sieve.ron` | environment-differential selection — the sieve plus one env-gated cull whose information floor is 2× higher where env field 0 is high; selection *strength* varies across space, no rule mentions position | the field value sets how hard the sieve shakes locally: high-field regions recycle the info-middling, and the recycled matter refuels rich survivors' splits (pair with `configs/gradient-sieve.ron`) |
 
 Authoring notes:
 

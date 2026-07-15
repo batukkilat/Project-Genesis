@@ -1,0 +1,87 @@
+// Gradient sieve: the environment differentially selects (Phase 6.5
+// selection-pressure experiment, second pack).
+//
+// packs/sieve.ron made information survival-relevant with one uniform
+// floor: below 0.2 you are absorbable, everywhere. This pack keeps every
+// sieve mechanism and adds exactly one rule — an env-gated CULL whose
+// information floor is more than twice as high (0.45), active only where
+// environment field 0 is high. On a west→east gradient the world becomes
+// a *cline of selection strength*: the west demands little, the east
+// demands nearly the imprint threshold, and no rule anywhere mentions
+// position. Whether the east empties out, hosts only heavily-imprinted
+// clusters, exports its recycled matter to the border, or something
+// stranger, is the experiment — the pack authors pressure, not outcome.
+//
+// Pair with configs/gradient-sieve.ron (the sieve world plus one
+// GradientX field). Requires a config declaring at least one env field;
+// assembly rejects the pack otherwise.
+(
+    rules: [
+        // CULL: the uniform sieve floor, unchanged from packs/sieve.ron.
+        // Matter-rich particles recycle info-poor neighbors anywhere.
+        (
+            radius: 4.0,
+            self_cond: ( matter: ( min: 0.5 ) ),
+            other_cond: ( information: ( max: 0.2 ) ),
+            probability: 0.05,
+            absorb: true,
+        ),
+        // CULL-HIGH: the same recycling with a raised floor, but only where
+        // field 0 is high. This single env gate is the entire difference
+        // between this pack and the sieve: in the high-field region,
+        // holding 0.2 information is no longer enough to be left alone —
+        // the environment, not the rule set, decides how hard the sieve
+        // shakes at each point in space.
+        (
+            radius: 4.0,
+            self_cond: ( matter: ( min: 0.5 ) ),
+            other_cond: ( information: ( max: 0.45 ) ),
+            env_cond: [ (field: 0, min: 0.6, max: 1.0) ],
+            probability: 0.05,
+            absorb: true,
+        ),
+        // SPLIT: info-rich, fueled particles divide; the child takes half
+        // of everything, information included. (= sieve)
+        (
+            radius: 6.0,
+            self_cond: ( information: ( min: 0.6 ), energy: ( min: 0.5 ), matter: ( min: 0.3 ) ),
+            probability: 0.02,
+            emit: ( matter_frac: 0.5, energy_frac: 0.5, info_frac: 0.5, offset: 1.5 ),
+        ),
+        // IMPRINT: the only way information rises. (= sieve)
+        (
+            radius: 6.0,
+            self_cond: ( information: ( min: 0.5 ), energy: ( min: 0.1 ) ),
+            other_cond: ( information: ( max: 0.5 ) ),
+            probability: 0.1,
+            info_copy: ( cost: 0.02, noise: 0.1 ),
+        ),
+        // FUEL: energy diffuses rich -> poor. (= sieve)
+        (
+            radius: 6.0,
+            self_cond: ( energy: ( min: 0.5 ) ),
+            other_cond: ( energy: ( max: 0.5 ) ),
+            probability: 0.05,
+            transfer: ( energy: 0.03 ),
+        ),
+        // BIND: info-rich particles cluster. (= sieve)
+        (
+            radius: 4.0,
+            self_cond: ( information: ( min: 0.5 ) ),
+            other_cond: ( information: ( min: 0.5 ) ),
+            probability: 0.1,
+            bond_create: ( strength: 2.0 ),
+        ),
+        // SHED: drop bonds to members below the uniform cull floor. The
+        // shed threshold deliberately stays at the *west* floor everywhere:
+        // a cluster in the east keeps recognizing a 0.3-information member
+        // right up until the environment recycles it — clusters do not get
+        // to pre-empt the local sieve. (= sieve)
+        (
+            radius: 4.0,
+            other_cond: ( information: ( max: 0.2 ) ),
+            probability: 0.2,
+            bond_break: true,
+        ),
+    ],
+)

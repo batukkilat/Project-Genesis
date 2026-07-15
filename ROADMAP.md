@@ -412,10 +412,21 @@ Deliverables, in dependency order:
   information-gated), against a config-set information decay that makes
   holding information cost energy forever. The deliverable's schema
   question is answered: the existing rule vocabulary expresses the
-  coupling — no engine extension was needed. Still open: regimes where
-  the *environment* differentially selects (env-conditioned decay), and
-  whether searched variants of such packs find qualitatively new
-  dynamics.
+  coupling — no engine extension was needed. **Second pack shipped
+  2026-07-15** (`packs/gradient-sieve.ron` + `configs/gradient-sieve.ron`
+  + docs/research/sweeps/2026-07-15-gradient-sieve.md): the sieve plus
+  one env-gated cull whose information floor is 2× higher where the
+  field is high — selection *strength* varies across space with no rule
+  mentioning position, answering the env-differential half of the
+  deliverable. Causally pinned by a two-uniform-worlds test (an open
+  gate costs population and thins the targeted information band); key
+  finding: the sieve *recycles*, so harder local selection drives
+  faster local turnover rather than emptier local statistics — a
+  process difference snapshots hide. At the 3k gate: fitness 76.09
+  (above sieve's 75.70) from 7% fewer bonds. Still open: whether
+  searched variants of env-selection packs find qualitatively new
+  dynamics (mutation operators keep env gates intact; a
+  search-02-shaped run costs ~70 min on the cloud box).
 - **Findings docs**: each sweep lands docs/research/sweeps/<date>-<topic>.md
   with the config corpus, scores, and what was learned — negative results
   count and prevent re-running dead regions.

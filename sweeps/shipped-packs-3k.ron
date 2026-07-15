@@ -50,6 +50,13 @@
             config: "configs/sieve.ron",
             rules: "packs/sieve.ron",
         ),
+        // Environment-differential selection: the sieve with a raised
+        // env-gated information floor where field 0 is high.
+        (
+            name: "gradient-sieve",
+            config: "configs/gradient-sieve.ron",
+            rules: "packs/gradient-sieve.ron",
+        ),
         // Kitchen sink: env dynamics + LOD + scripted edits/impact/rift.
         (
             name: "full-stack",
