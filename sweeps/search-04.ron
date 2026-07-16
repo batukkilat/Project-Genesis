@@ -1,0 +1,71 @@
+// Search 04 — do duplicated environmental gates specialize?
+//
+// Search-03 ended with the cline-world lineage carrying MULTIPLIED
+// env-gated culls (the champion has two, rank-4 cousins three) and an
+// open follow-up: do the copies DIVERGE — different radii / info floors /
+// riders settling into distinct roles — under a longer search, or do they
+// stay redundant copies drifting together? Mutation v1 deliberately never
+// touches env_cond bounds (search.rs scope note), so the climate window
+// itself is frozen at [0.6, 1.0] for every gate; what can specialize is
+// everything around the window: radius (encounter volume), the culled
+// info band (other_cond.information.max), probability, and the
+// matter/energy riders. If divergence presses against that frozen window
+// — copies specializing in every mutable knob while stuck sharing one
+// climate band — that finding is the concrete case for an env-gate
+// operator in a future instrument bump; this run measures it first.
+//
+// Three seeds from the committed search-03 artifacts, one pool — the
+// internal-control structure of search-03 again, now racing gate count
+// directly: 2 gates (g005-i005, the CONFIRMED champion — the only
+// individual in the family with an honest 6k record), 3 gates
+// (g005-i007, screen rank 4, never confirmed), and 0 gates (g005-i009,
+// rank 6, the branch that stripped every gate and survived — only 1.2%
+// behind the champion at the screen, so the race is genuinely open).
+// Truncation selection over the whole pool decides whether more gates,
+// fewer, or none is the fitter genotype under continued evolution.
+//
+// Instrument settings carried unchanged from search-02/-03 (sigma 0.6,
+// 3 ops/child, screen 3k/every 100, 200k/600k caps) so this reads as a
+// continuation, not a new regime. confirm_top 3: the screen's #1 has
+// detonated in confirmation in BOTH prior searches (search-03 finding 4
+// calls >=2 the empirical floor), and with three families racing, 3
+// confirmations can cover the podium.
+//
+// Budget: 3 seeds + 8 generations x 10 children = 83 screens at 3k.
+// This family screens at 37k-99k bonds (leaderboard), cheaper than the
+// 140k+ sieve-class rows of search-03 (62 evals, 2867s), so expect
+// roughly 45-70 min on the 4-core cloud box, plus three 6k confirms.
+//
+//   genesis search --spec sweeps/search-04.ron --out <dir>
+#![enable(implicit_some)]
+(
+    seed: 20260716,
+    generations: 8,
+    population: 10,
+    survivors: 3,
+    sigma: 0.6,
+    mutations_per_child: 3,
+    screen_ticks: 3000,
+    every: 100,
+    confirm_ticks: 6000,
+    confirm_top: 3,
+    bond_cap: 200000,
+    confirm_bond_cap: 600000,
+    seeds: [
+        (
+            name: "champ-2gate",
+            config: Some("docs/research/sweeps/2026-07-15-search-03/g005/g005-i005.config.ron"),
+            rules: "docs/research/sweeps/2026-07-15-search-03/g005/g005-i005.pack.ron",
+        ),
+        (
+            name: "cousin-3gate",
+            config: Some("docs/research/sweeps/2026-07-15-search-03/g005/g005-i007.config.ron"),
+            rules: "docs/research/sweeps/2026-07-15-search-03/g005/g005-i007.pack.ron",
+        ),
+        (
+            name: "degated-0gate",
+            config: Some("docs/research/sweeps/2026-07-15-search-03/g005/g005-i009.config.ron"),
+            rules: "docs/research/sweeps/2026-07-15-search-03/g005/g005-i009.pack.ron",
+        ),
+    ],
+)
