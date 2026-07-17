@@ -1,0 +1,26 @@
+(
+    id: "g005-i003",
+    parent: Some("g003-i006"),
+    ops: [
+        RewireCondition(
+            rule: 6,
+            side: "self_cond",
+            from: "matter",
+            to: "information",
+        ),
+        JitterRule(
+            rule: 8,
+            field: "probability",
+            old: 0.1,
+            new: 0.15226172,
+        ),
+        DropRule(
+            rule: 3,
+        ),
+    ],
+    search_seed: 20260716,
+    generation: 5,
+    individual: 3,
+    config: "g005/g005-i003.config.ron",
+    rules: "g005/g005-i003.pack.ron",
+)

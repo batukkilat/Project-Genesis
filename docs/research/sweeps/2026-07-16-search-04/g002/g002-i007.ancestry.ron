@@ -1,0 +1,34 @@
+(
+    id: "g002-i007",
+    parent: Some("g000-i000"),
+    ops: [
+        JitterConfig(
+            field: "physics.bond_rest_length",
+            old: 3.0,
+            new: 4.3880095,
+        ),
+        DuplicateRule(
+            source: 6,
+            new_index: 9,
+            fields: [
+                ("transfer.matter", 0.00062643224, 0.0007927518),
+                ("self_cond.matter.min", 0.5, 0.2817435),
+                ("transfer.information", 0.0, 0.0014779865),
+            ],
+        ),
+        DuplicateRule(
+            source: 9,
+            new_index: 10,
+            fields: [
+                ("transfer.energy", 0.0008596521, 0.000584102),
+                ("radius", 4.0, 3.8338232),
+                ("probability", 0.05, 0.03203351),
+            ],
+        ),
+    ],
+    search_seed: 20260716,
+    generation: 2,
+    individual: 7,
+    config: "g002/g002-i007.config.ron",
+    rules: "g002/g002-i007.pack.ron",
+)

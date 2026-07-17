@@ -1,0 +1,28 @@
+(
+    id: "g002-i008",
+    parent: Some("g001-i005"),
+    ops: [
+        DropRule(
+            rule: 4,
+        ),
+        DuplicateRule(
+            source: 1,
+            new_index: 5,
+            fields: [
+                ("transfer.energy", 0.0, 0.000852818),
+                ("info_copy.noise", 0.1, 0.08349381),
+                ("radius", 6.0, 8.0),
+            ],
+        ),
+        JitterConfig(
+            field: "physics.bond_rest_length",
+            old: 3.0,
+            new: 3.4991634,
+        ),
+    ],
+    search_seed: 20260716,
+    generation: 2,
+    individual: 8,
+    config: "g002/g002-i008.config.ron",
+    rules: "g002/g002-i008.pack.ron",
+)

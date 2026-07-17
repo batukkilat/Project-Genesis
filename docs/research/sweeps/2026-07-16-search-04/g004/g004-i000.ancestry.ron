@@ -1,0 +1,28 @@
+(
+    id: "g004-i000",
+    parent: Some("g003-i006"),
+    ops: [
+        JitterConfig(
+            field: "initial.energy.hi",
+            old: 0.5323791,
+            new: 0.5998674,
+        ),
+        JitterRule(
+            rule: 0,
+            field: "radius",
+            old: 5.9825687,
+            new: 5.345134,
+        ),
+        JitterRule(
+            rule: 0,
+            field: "transfer.matter",
+            old: 0.0,
+            new: 0.00010650641,
+        ),
+    ],
+    search_seed: 20260716,
+    generation: 4,
+    individual: 0,
+    config: "g004/g004-i000.config.ron",
+    rules: "g004/g004-i000.pack.ron",
+)

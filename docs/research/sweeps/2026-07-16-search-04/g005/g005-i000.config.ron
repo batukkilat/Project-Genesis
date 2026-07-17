@@ -1,0 +1,63 @@
+(
+    seed: 0,
+    particle_count: 10000,
+    world_width: 1024.0,
+    world_height: 1024.0,
+    ticks_per_second: 60,
+    initial: (
+        matter: (
+            lo: 0.1,
+            hi: 1.0,
+        ),
+        energy: (
+            lo: 0.0,
+            hi: 0.5323791,
+        ),
+        information: (
+            lo: 0.0,
+            hi: 1.0,
+        ),
+        speed: (
+            lo: 0.05293524,
+            hi: 2.0,
+        ),
+    ),
+    physics: (
+        interaction_radius: 8.0,
+        core_frac: 0.4,
+        repulsion: 40.0,
+        attraction: 9.172078,
+        bond_rest_length: 1.6642574,
+        information_decay: 0.013747369,
+        information_max: 1000000000000000000000000000000.0,
+        spin: 0.0,
+    ),
+    lod: (
+        enabled: false,
+        chunk_cells: 8,
+        ladder: [
+            (
+                min_activity: 0.0,
+                rate: 1,
+            ),
+        ],
+    ),
+    env: (
+        cols: 32,
+        rows: 32,
+        fields: [
+            (
+                name: "pressure",
+                init: GradientX(
+                    lo: 0.0,
+                    hi: 1.0,
+                ),
+                dynamics: (
+                    diffusion: 0.0,
+                    relax_rate: 0.0,
+                    relax_to: 0.0,
+                ),
+            ),
+        ],
+    ),
+)

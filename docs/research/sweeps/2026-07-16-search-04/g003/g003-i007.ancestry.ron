@@ -1,0 +1,27 @@
+(
+    id: "g003-i007",
+    parent: Some("g002-i003"),
+    ops: [
+        JitterConfig(
+            field: "physics.repulsion",
+            old: 33.217987,
+            new: 22.199162,
+        ),
+        JitterConfig(
+            field: "initial.speed.hi",
+            old: 1.7233872,
+            new: 1.901183,
+        ),
+        JitterRule(
+            rule: 8,
+            field: "transfer.energy",
+            old: 0.0,
+            new: 0.0011155154,
+        ),
+    ],
+    search_seed: 20260716,
+    generation: 3,
+    individual: 7,
+    config: "g003/g003-i007.config.ron",
+    rules: "g003/g003-i007.pack.ron",
+)

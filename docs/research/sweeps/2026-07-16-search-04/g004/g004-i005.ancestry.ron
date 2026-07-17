@@ -1,0 +1,28 @@
+(
+    id: "g004-i005",
+    parent: Some("g003-i000"),
+    ops: [
+        JitterConfig(
+            field: "physics.repulsion",
+            old: 40.0,
+            new: 36.856087,
+        ),
+        JitterRule(
+            rule: 6,
+            field: "self_cond.matter.min",
+            old: 0.5,
+            new: 0.2786889,
+        ),
+        JitterRule(
+            rule: 1,
+            field: "other_cond.information.max",
+            old: 0.45,
+            new: 0.2622059,
+        ),
+    ],
+    search_seed: 20260716,
+    generation: 4,
+    individual: 5,
+    config: "g004/g004-i005.config.ron",
+    rules: "g004/g004-i005.pack.ron",
+)
