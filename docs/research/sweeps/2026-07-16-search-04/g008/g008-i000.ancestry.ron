@@ -1,0 +1,26 @@
+(
+    id: "g008-i000",
+    parent: Some("g007-i009"),
+    ops: [
+        DropRule(
+            rule: 6,
+        ),
+        DuplicateRule(
+            source: 3,
+            new_index: 10,
+            fields: [
+                ("probability", 0.1, 0.1419761),
+                ("radius", 6.0, 4.8360367),
+                ("self_cond.energy.min", 0.11284788, 0.07276701),
+            ],
+        ),
+        DropRule(
+            rule: 2,
+        ),
+    ],
+    search_seed: 20260716,
+    generation: 8,
+    individual: 0,
+    config: "g008/g008-i000.config.ron",
+    rules: "g008/g008-i000.pack.ron",
+)

@@ -1,0 +1,29 @@
+(
+    id: "g007-i006",
+    parent: Some("g006-i000"),
+    ops: [
+        JitterRule(
+            rule: 7,
+            field: "probability",
+            old: 0.05,
+            new: 0.041135322,
+        ),
+        DropRule(
+            rule: 2,
+        ),
+        DuplicateRule(
+            source: 1,
+            new_index: 10,
+            fields: [
+                ("self_cond.matter.min", 0.5, 0.35205385),
+                ("probability", 0.05, 0.04481233),
+                ("transfer.matter", 0.0013787932, 0.00089672627),
+            ],
+        ),
+    ],
+    search_seed: 20260716,
+    generation: 7,
+    individual: 6,
+    config: "g007/g007-i006.config.ron",
+    rules: "g007/g007-i006.pack.ron",
+)
