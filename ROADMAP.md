@@ -418,7 +418,21 @@ Deliverables, in dependency order:
   branch; whether the criterion is amended (bounded-degree headline),
   kept, or reinterpreted is owner-level and parked as Q-2026-07-15-A —
   the phase is not marked done on the strength of this session's own
-  analysis.
+  analysis. **Fourth run (search-04) 2026-07-17**
+  (docs/research/sweeps/2026-07-16-search-04.md, spec committed
+  2026-07-16): three search-03 seeds raced gate count (2 / 3 / 0
+  env-gated culls) in one pool — the 2-gate line swept; the gates
+  themselves stayed bit-frozen for eight generations while every
+  late-generation fitness leap came from `RewireCondition` moving
+  information bounds onto matter/energy (the same rewire found
+  independently three times) — under an information-rewarding fitness,
+  evolution *removes* information preconditions to widen
+  participation. The screen's #1 **and** #2 both detonated in
+  confirmation (confirm_top 3 is now the empirical floor, third
+  screen-champion detonation running); the honest champion g008-i003
+  confirms at 94.80 (+6.6 % over search-03) on an eighth of the bond
+  mass. The env-gate mutation-operator case is weaker, not stronger:
+  nothing pressed against the frozen climate window.
 - **Selection-pressure experiments**: **first pack shipped 2026-07-13**
   (`packs/sieve.ron` + `configs/sieve.ron`) — information gates survival
   (info-poor particles are absorbable), reproduction (emit requires an
