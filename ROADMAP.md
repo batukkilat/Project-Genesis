@@ -432,7 +432,12 @@ Deliverables, in dependency order:
   screen-champion detonation running); the honest champion g008-i003
   confirms at 94.80 (+6.6 % over search-03) on an eighth of the bond
   mass. The env-gate mutation-operator case is weaker, not stronger:
-  nothing pressed against the frozen climate window.
+  nothing pressed against the frozen climate window. The champion's
+  20 k evaluation (affordable for this lean family: 212 s) scores
+  headline 2 192.4 — below search-02's 2 421.6 and the condensing
+  packs — while posting the highest fitness ever measured (106.97):
+  fitness and the raw exit scalar now disagree on measured numbers,
+  the concrete form of Q-2026-07-15-A.
 - **Selection-pressure experiments**: **first pack shipped 2026-07-13**
   (`packs/sieve.ron` + `configs/sieve.ron`) — information gates survival
   (info-poor particles are absorbable), reproduction (emit requires an

@@ -5,6 +5,120 @@ owner: full technical vocabulary, explained rather than simplified.
 
 ---
 
+## 2026-07-17 — cloud night shift 1 (Fable); also logs the cut-off 2026-07-16 shift
+
+The 2026-07-16 shift was cut off by a container restart mid-run and
+never wrote its entry; its two commits were `30a1c4e` (the search-04
+spec) and `9c8ce93` (checkpointed generations 0–1). This shift pushed:
+eight checkpoint commits (`05a8a94` → `f8d2b6e`) landing search-04's
+artifacts as they were produced, `caf6858` — search-04 completion
+(leaderboard, summary, confirmations, findings doc, ROADMAP currency)
+— and this entry. One follow-up is in flight at wind-down: the
+champion's 20 k corpus-horizon `genesis score` run (see *What to
+watch*).
+
+**What changed and why.** One thread: finish search-04, the run the
+2026-07-16 shift designed and started. The spec races gate count —
+three seeds from the committed search-03 artifacts (the confirmed
+champion with two env-gated culls, a three-gate cousin, the de-gated
+branch) in one pool — to answer search-03's open follow-up: do
+duplicated environmental gates *specialize*, diverging in radius,
+culled band, probability, or riders around the climate window that
+mutation v1 deliberately cannot touch? Executing it took three
+launches: the 2026-07-16 container restart killed run 1 of the search
+after generation 1; tonight's relaunch was killed silently by the
+environment mid-generation-8 (33 minutes in, no panic, no OOM — 15.5 G
+free); the third launch, run as a harness-tracked background task,
+completed in 3 626.5 s. Because a search is a pure function of (spec,
+build), every relaunch re-derived the identical universe: each
+already-committed artifact was reproduced byte-for-byte before new
+ground was broken — verified by `git status` staying clean over ~1 100
+committed files — so the kills cost wall-clock, never correctness.
+The scientific results, in the findings doc's order: (1) the 2-gate
+line swept the pool (3-gate faded, 0-gate extinct by generation 2);
+(2) the gates themselves stayed bit-frozen along the champion lineage
+for eight generations — one matter-rider doubling was the only gate
+mutation selection kept; (3) every late fitness leap instead came from
+`RewireCondition` moving *information* bounds onto matter or energy in
+the rules around the gates — the same rewire discovered independently
+three times, 28 rewires on the final leaderboard — i.e. under a
+fitness that rewards structure-held information, evolution
+systematically deletes information *preconditions*, plausibly because
+a precondition limits which particles may act while the imprint
+economy concentrates information regardless; (4) the screen's #1 AND
+#2 both detonated in confirmation (capped past 600 k bonds at 6 k) —
+the third consecutive screen-champion detonation, making `confirm_top
+3` the empirical floor — including an information detonator whose
+screen total had already reached 2.1 × 10¹¹, screened at merely 99.5
+because fitness v1's logarithmic saturation damped exactly the
+runaway it was designed to damp; (5) the honest champion g008-i003
+confirms at 94.80 (+6.6 % over search-03's 88.90) holding 28 520
+bonds at 6 k — an eighth of its grandparent regime's bond mass — so
+the lineage climbs fitness by *shrinking* structure while raising
+held information, the anti-condensation direction for the third
+search running. The verdict on the spec's question is negative in an
+instructive way: gate copies specialized along the categorical axis
+(which quantity a condition reads), not the numeric knobs, and
+nothing pressed against the frozen env window — so the case for an
+env-gate mutation operator got weaker, not stronger. Both findings
+docs record this; ROADMAP's search bullet carries the summary.
+
+**How it was proven.** No simulation code was touched (every commit is
+docs/research artifacts), so no replay-identity surface moved and
+`genesis verify` was not owed; the determinism evidence tonight is
+observational and unusually strong — three independent processes of
+the same build reproduced overlapping prefixes of an 83-evaluation
+search bit-for-bit, cross-checked by git over the committed bytes.
+The full workspace suite (17 crates' suites), clippy (zero warnings),
+and fmt ran clean at shift start and again at wind-down. What the
+tests cannot catch, honestly: the de-informationalization reading in
+finding 3 is an interpretation of selection outcomes — the mechanism
+("preconditions restrict participation") is plausible and consistent
+with bond/information trajectories, but no controlled single-variable
+experiment isolates it; and the fitness-vs-headline divergence at
+20 k rests on one run each of two champions — direction is clear,
+margins are single measurements.
+
+**What to watch.** (1) The 20 k corpus-horizon evaluation of
+g008-i003 completed before wind-down (212 s — affordable, as the
+shrinking-bonds finding predicted) and is committed with the findings:
+headline 2 192.4, **below** search-02's champion (2 421.6) while its
+fitness (106.97) is the highest ever measured — fitness and the raw
+exit scalar now disagree on measured numbers about which discovered
+regime is best, which is Q-2026-07-15-A made concrete. (2) This environment kills
+long-running detached processes (twice tonight); harness-tracked
+background tasks survived — future shifts should launch multi-minute
+work only that way. (3) Several system notifications this session
+were *fabricated* — phantom generation lines, a phantom panic
+pointing at evolve.rs:471, phantom task completions — and acting on
+the panic would have meant "fixing" healthy code. The defense that
+worked: verify every notification against the filesystem/process
+table before acting. (4) The screen keeps selecting regimes scheduled
+to detonate just past its horizon; the findings doc parks a concrete
+instrument idea (a mid-screen bond-growth-rate mark) rather than
+proposing engine changes. (5) Q-2026-07-15-A (the condensation-favoring
+exit scalar) remains the phase's owner-level gate; nothing tonight
+changes it — the champion's 566-at-6 k headline is not a 20 k claim.
+
+**Concept of the shift: determinism as disaster recovery.** The
+search was killed twice at arbitrary points, and the recovery
+procedure both times was simply "run it again": because every mutation
+draws from RNG streams derived from (search seed, generation,
+individual) — never from wall clock, thread timing, or machine state —
+and every evaluation is a pure function of the artifact bytes on
+disk, the third run necessarily walked the same path as the first two
+until it passed them. The write-once artifact convention turns this
+into an audit: files committed by a killed run are *predictions*
+about what any future run must produce, and `git status` after the
+third run was the proof they all held. This is the same property that
+makes replays trustworthy (same seed + config + actions = same
+universe), showing up somewhere its designers never aimed it: process
+supervision. A system built so that nothing depends on *when* or *how
+many times* it executes is a system whose crashes are boring — and
+boring crashes are the cheapest kind to operate.
+
+---
+
 ## 2026-07-15 — cloud night shift 1 (Fable)
 
 Pushed: `b02bf71` observer complexity decomposition; `23ef9ce` headline
