@@ -472,6 +472,13 @@ Deliverables, in dependency order:
 - **Findings docs**: each sweep lands docs/research/sweeps/<date>-<topic>.md
   with the config corpus, scores, and what was learned — negative results
   count and prevent re-running dead regions.
+- **Bounded-headline measurement 2026-07-17** (Q-2026-07-17-B,
+  docs/research/sweeps/2026-07-17-bounded-headline.md): every RunScore
+  now reports the headline restricted to non-condensed rows, and the
+  affordable corpus subset + both discovered champions were re-scored
+  at 20 k to populate it — the measured evidence Q-2026-07-15-A was
+  waiting on. The exit criterion stays scored on the raw scalar until
+  the owner decides.
 
 Exit criteria: at least one discovered (not hand-authored) regime whose
 Observer metrics beat every shipped pack on persistence × complexity, with
