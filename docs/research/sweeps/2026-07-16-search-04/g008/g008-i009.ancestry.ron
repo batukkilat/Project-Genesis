@@ -1,0 +1,26 @@
+(
+    id: "g008-i009",
+    parent: Some("g007-i009"),
+    ops: [
+        JitterRule(
+            rule: 4,
+            field: "transfer.matter",
+            old: 0.0,
+            new: 0.00010898578,
+        ),
+        DropRule(
+            rule: 7,
+        ),
+        JitterRule(
+            rule: 4,
+            field: "probability",
+            old: 0.05,
+            new: 0.041023396,
+        ),
+    ],
+    search_seed: 20260716,
+    generation: 8,
+    individual: 9,
+    config: "g008/g008-i009.config.ron",
+    rules: "g008/g008-i009.pack.ron",
+)

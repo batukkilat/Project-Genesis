@@ -1,0 +1,27 @@
+(
+    id: "g008-i008",
+    parent: Some("g007-i000"),
+    ops: [
+        JitterConfig(
+            field: "initial.information.lo",
+            old: 0.033290174,
+            new: 0.036672115,
+        ),
+        JitterConfig(
+            field: "initial.matter.lo",
+            old: 0.1544018,
+            new: 0.23858601,
+        ),
+        JitterRule(
+            rule: 7,
+            field: "radius",
+            old: 4.0,
+            new: 4.948572,
+        ),
+    ],
+    search_seed: 20260716,
+    generation: 8,
+    individual: 8,
+    config: "g008/g008-i008.config.ron",
+    rules: "g008/g008-i008.pack.ron",
+)

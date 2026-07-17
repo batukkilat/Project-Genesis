@@ -1,0 +1,28 @@
+(
+    id: "g008-i005",
+    parent: Some("g007-i000"),
+    ops: [
+        JitterRule(
+            rule: 3,
+            field: "transfer.matter",
+            old: 0.0,
+            new: 0.0006519485,
+        ),
+        JitterConfig(
+            field: "initial.speed.lo",
+            old: 0.0,
+            new: 0.044413622,
+        ),
+        RewireCondition(
+            rule: 5,
+            side: "other_cond",
+            from: "information",
+            to: "matter",
+        ),
+    ],
+    search_seed: 20260716,
+    generation: 8,
+    individual: 5,
+    config: "g008/g008-i005.config.ron",
+    rules: "g008/g008-i005.pack.ron",
+)
