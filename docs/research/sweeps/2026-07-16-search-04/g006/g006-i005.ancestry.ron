@@ -1,0 +1,29 @@
+(
+    id: "g006-i005",
+    parent: Some("g003-i006"),
+    ops: [
+        DuplicateRule(
+            source: 5,
+            new_index: 9,
+            fields: [
+                ("self_cond.information.min", 0.5, 0.5510248),
+                ("radius", 4.0, 6.4961495),
+                ("transfer.energy", 0.0, 0.0016618461),
+            ],
+        ),
+        JitterRule(
+            rule: 7,
+            field: "transfer.energy",
+            old: 0.00041378976,
+            new: 0.0002355237,
+        ),
+        DropRule(
+            rule: 0,
+        ),
+    ],
+    search_seed: 20260716,
+    generation: 6,
+    individual: 5,
+    config: "g006/g006-i005.config.ron",
+    rules: "g006/g006-i005.pack.ron",
+)

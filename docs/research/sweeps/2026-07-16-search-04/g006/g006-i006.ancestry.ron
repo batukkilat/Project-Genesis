@@ -1,0 +1,23 @@
+(
+    id: "g006-i006",
+    parent: Some("g005-i007"),
+    ops: [
+        JitterRule(
+            rule: 9,
+            field: "transfer.energy",
+            old: 0.0015681769,
+            new: 0.0009136218,
+        ),
+        DropRule(
+            rule: 5,
+        ),
+        DropRule(
+            rule: 7,
+        ),
+    ],
+    search_seed: 20260716,
+    generation: 6,
+    individual: 6,
+    config: "g006/g006-i006.config.ron",
+    rules: "g006/g006-i006.pack.ron",
+)

@@ -1,0 +1,30 @@
+(
+    id: "g006-i000",
+    parent: Some("g005-i007"),
+    ops: [
+        JitterConfig(
+            field: "initial.speed.hi",
+            old: 2.0,
+            new: 2.1893384,
+        ),
+        DuplicateRule(
+            source: 0,
+            new_index: 10,
+            fields: [
+                ("self_cond.matter.min", 0.5, 0.9074476),
+                ("other_cond.information.max", 0.2, 0.31742913),
+            ],
+        ),
+        RewireCondition(
+            rule: 9,
+            side: "other_cond",
+            from: "information",
+            to: "matter",
+        ),
+    ],
+    search_seed: 20260716,
+    generation: 6,
+    individual: 0,
+    config: "g006/g006-i000.config.ron",
+    rules: "g006/g006-i000.pack.ron",
+)
