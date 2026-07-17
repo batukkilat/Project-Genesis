@@ -1,0 +1,31 @@
+(
+    id: "g005-i009",
+    parent: Some("g003-i006"),
+    ops: [
+        RewireCondition(
+            rule: 2,
+            side: "self_cond",
+            from: "matter",
+            to: "information",
+        ),
+        JitterRule(
+            rule: 6,
+            field: "other_cond.information.max",
+            old: 0.2,
+            new: 0.30327484,
+        ),
+        DuplicateRule(
+            source: 6,
+            new_index: 9,
+            fields: [
+                ("self_cond.matter.min", 0.5, 0.60759956),
+                ("transfer.information", 0.0, 0.0012504981),
+            ],
+        ),
+    ],
+    search_seed: 20260716,
+    generation: 5,
+    individual: 9,
+    config: "g005/g005-i009.config.ron",
+    rules: "g005/g005-i009.pack.ron",
+)
