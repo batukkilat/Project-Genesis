@@ -13,9 +13,10 @@ spec) and `9c8ce93` (checkpointed generations 0–1). This shift pushed:
 eight checkpoint commits (`05a8a94` → `f8d2b6e`) landing search-04's
 artifacts as they were produced, `caf6858` — search-04 completion
 (leaderboard, summary, confirmations, findings doc, ROADMAP currency)
-— and this entry. One follow-up is in flight at wind-down: the
-champion's 20 k corpus-horizon `genesis score` run (see *What to
-watch*).
+— `7ede609` — the champion's 20 k evaluation + this entry — and a
+late unit: instrument v1.2 (`bonds_growth_late`, the commit after
+`7ede609`), whose planned detonation mark was rejected by its own
+calibration measurement (see below).
 
 **What changed and why.** One thread: finish search-04, the run the
 2026-07-16 shift designed and started. The spec races gate count —
@@ -62,6 +63,19 @@ instructive way: gate copies specialized along the categorical axis
 nothing pressed against the frozen env window — so the case for an
 env-gate mutation operator got weaker, not stronger. Both findings
 docs record this; ROADMAP's search bullet carries the summary.
+
+A late unit turned the detonation pattern into instrument code —
+and the measurement step killed half the design, which is the point
+of measuring. Every `RunScore` now carries `bonds_growth_late`
+(final-sample bonds over two-thirds-sample bonds; serde-defaulted so
+all committed records load). The planned leaderboard "detonating"
+mark was calibrated against the search-04 podium before shipping:
+the detonators' screen growth (1.18 / 1.35) is indistinguishable
+from the honest champion's (1.17), so the mark was dropped — the
+detonation is scheduled wholly past the screen and no threshold on
+this statistic can see it coming. The field ships report-only; the
+negative result went into the decisions log (Q-2026-07-17-A) so no
+future shift re-invents the flag without new evidence.
 
 **How it was proven.** No simulation code was touched (every commit is
 docs/research artifacts), so no replay-identity surface moved and
