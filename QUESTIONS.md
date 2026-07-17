@@ -54,6 +54,17 @@ is the phase's owner-approved definition of success (2026-07-12), and
 the 2026-07-14 shift log explicitly reserved this for an owner-level
 look once evidence accumulated — it now has.
 
+**Update 2026-07-17.** The *measurement half* of option 2 shipped
+report-only (decisions log Q-2026-07-17-B): every new `RunScore`
+carries `persistence_complexity_bounded`, and the affordable 20 k
+subset (actual, sandbox, full-stack, chains, both discovered
+champions) plus the 3 k gate were re-scored to populate it — measured
+numbers in docs/research/sweeps/2026-07-17-bounded-headline.md. The
+decision itself stays parked: the exit criterion is still scored on
+the raw scalar; what changed is that choosing option 2 (or rejecting
+it) can now be done against a real bounded leaderboard instead of the
+anatomy doc's analytic ceilings.
+
 ## Q-2026-07-10-D — magnetic field: blocked on a radiation quantity
 
 **Context.** The constitutional verb list includes "magnetic field", and

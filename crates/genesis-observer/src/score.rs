@@ -17,6 +17,14 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use std::path::Path;
 
+/// The condensation mark: mean bond degree above which a structure (or a
+/// whole world, in the search's per-run flag) is read as welded rather than
+/// organized (2026-07-13 baseline sweep, finding 1). One definition shared
+/// by every consumer — the search leaderboard flag and the bounded headline
+/// below — so "condensed" always means the same number. A diagnostic
+/// threshold for reporting, never a penalty and never replay identity.
+pub const CONDENSED_MEAN_DEGREE: f64 = 50.0;
+
 /// Aggregated Observer metrics for one run. All zeros when the timeline is
 /// empty. "Final" fields read the last sample; "peak" fields take the
 /// maximum over every sample, so a structure that thrived and died before
@@ -77,6 +85,21 @@ pub struct RunScore {
     /// before the field existed (serde default).
     #[serde(default = "neutral_growth")]
     pub bonds_growth_late: f64,
+    /// The headline scalar restricted to structures respecting the
+    /// condensation mark: the maximum of `persistence × complexity` over
+    /// every (structure, sample) row with `mean_degree ≤`
+    /// [`CONDENSED_MEAN_DEGREE`]. The measurement half of Q-2026-07-15-A
+    /// option 2 — the raw scalar keeps its meaning and history; this field
+    /// reports what a regime scores *without* welding, so the two regime
+    /// classes the phase judges differently can finally be told apart on
+    /// numbers. Report-only: never fitness, never selection, never replay
+    /// identity, and the exit criterion itself stays scored on the raw
+    /// scalar until the parked owner decision says otherwise. `Some(0.0)`
+    /// when measured and no row qualified; `None` for records written
+    /// before the field existed (a maximum has no neutral sentinel, so
+    /// absence must stay distinguishable from zero).
+    #[serde(default)]
+    pub persistence_complexity_bounded: Option<f64>,
 }
 
 fn neutral_growth() -> f64 {
@@ -108,6 +131,7 @@ impl RunScore {
             growing_peak_confidence: 0.0,
             persistence_complexity: 0.0,
             bonds_growth_late: neutral_growth(),
+            persistence_complexity_bounded: Some(0.0),
         }
     }
 
@@ -149,6 +173,7 @@ impl RunScore {
 
         let mut self_maintaining: BTreeSet<u64> = BTreeSet::new();
         let mut growing: BTreeSet<u64> = BTreeSet::new();
+        let mut bounded = 0.0f64;
         for s in samples {
             score.structures_peak = score.structures_peak.max(s.structures.len());
             score.largest_size_peak = score.largest_size_peak.max(s.stats.largest_component);
@@ -156,9 +181,11 @@ impl RunScore {
             for m in &s.structures {
                 score.lifetime_peak = score.lifetime_peak.max(m.persistence);
                 score.complexity_peak = score.complexity_peak.max(m.complexity);
-                score.persistence_complexity = score
-                    .persistence_complexity
-                    .max(m.persistence as f64 * m.complexity);
+                let headline = m.persistence as f64 * m.complexity;
+                score.persistence_complexity = score.persistence_complexity.max(headline);
+                if m.mean_degree <= CONDENSED_MEAN_DEGREE {
+                    bounded = bounded.max(headline);
+                }
                 information += m.information;
             }
             score.information_peak = score.information_peak.max(information);
@@ -179,6 +206,7 @@ impl RunScore {
         }
         score.self_maintaining_structures = self_maintaining.len();
         score.growing_structures = growing.len();
+        score.persistence_complexity_bounded = Some(bounded);
         score
     }
 }
@@ -310,9 +338,49 @@ mod tests {
             "structure 1 at sample 1: 3 × 4.0"
         );
         assert_eq!(
+            s.persistence_complexity_bounded,
+            Some(12.0),
+            "every row here has mean degree 0: bounded equals the raw scalar"
+        );
+        assert_eq!(
             s.bonds_growth_late, 0.5,
             "two samples: base is sample 0 (20 bonds), final is 10"
         );
+    }
+
+    #[test]
+    fn bounded_headline_excludes_condensed_rows_only() {
+        let dense = |id, persistence, complexity, mean_degree| StructureMetrics {
+            mean_degree,
+            ..row(id, 100, persistence, complexity, 0.0)
+        };
+        let mut tl = Timeline::new(ObserverConfig::default());
+        // One welded blob carrying the top raw headline, one structure
+        // exactly at the mark (a boundary the mark must include — `condensed`
+        // means *above* the threshold), one sparse structure below it.
+        tl.record(
+            stats(100, 300, 5000, 100),
+            vec![
+                dense(1, 10, 9.0, 80.0),
+                dense(2, 8, 5.0, CONDENSED_MEAN_DEGREE),
+                dense(3, 6, 4.0, 2.0),
+            ],
+        );
+        let s = RunScore::from_timeline(&tl);
+        assert_eq!(s.persistence_complexity, 90.0, "raw scalar keeps the blob");
+        assert_eq!(
+            s.persistence_complexity_bounded,
+            Some(40.0),
+            "bounded takes the at-mark row (8 × 5.0), never the blob"
+        );
+
+        // A timeline where *every* structure is welded: measured, nothing
+        // qualified — Some(0.0), which is distinguishable from an old
+        // record's None.
+        let mut tl = Timeline::new(ObserverConfig::default());
+        tl.record(stats(100, 300, 5000, 100), vec![dense(1, 10, 9.0, 80.0)]);
+        let s = RunScore::from_timeline(&tl);
+        assert_eq!(s.persistence_complexity_bounded, Some(0.0));
     }
 
     #[test]
@@ -337,8 +405,10 @@ mod tests {
 
     #[test]
     fn records_without_the_growth_field_load_neutral() {
-        // A pre-v1.2 record: serialize a current one, strip the field, and
-        // reparse — committed search-01..04 artifacts must keep loading.
+        // A pre-v1.2 record: serialize a current one, strip the fields
+        // added since, and reparse — committed search-01..04 artifacts must
+        // keep loading. Growth loads as the neutral 1.0; the bounded
+        // headline loads as None ("not measured"), never as a fake zero.
         let mut tl = Timeline::new(ObserverConfig::default());
         tl.record(stats(10, 5, 2, 3), vec![row(1, 3, 1, 1.7, 0.4)]);
         let record = ScoreRecord {
@@ -354,12 +424,15 @@ mod tests {
         let text = record.to_ron().unwrap();
         let stripped: String = text
             .lines()
-            .filter(|l| !l.contains("bonds_growth_late"))
+            .filter(|l| {
+                !l.contains("bonds_growth_late") && !l.contains("persistence_complexity_bounded")
+            })
             .collect::<Vec<_>>()
             .join("\n");
-        assert_ne!(text, stripped, "the field must actually serialize");
+        assert_ne!(text, stripped, "the fields must actually serialize");
         let loaded = ScoreRecord::from_ron(&stripped).unwrap();
         assert_eq!(loaded.score.bonds_growth_late, 1.0);
+        assert_eq!(loaded.score.persistence_complexity_bounded, None);
         assert_eq!(loaded.score.bonds_final, record.score.bonds_final);
     }
 

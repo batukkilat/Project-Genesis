@@ -24,11 +24,13 @@ use genesis_observer::{ObserverConfig, ScoreRecord};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
-/// Mean bond degree above which a run is flagged `condensed` on the
-/// leaderboard: the world has welded into blob(s) (2026-07-13 baseline
-/// sweep, finding 1). A mark for honest reading, never a penalty — fitness
-/// already declines to reward condensation.
-const CONDENSED_MEAN_DEGREE: f64 = 50.0;
+/// The condensation mark now lives beside the score types it qualifies
+/// (one definition for the leaderboard flag and the bounded headline):
+/// mean bond degree above which a run is flagged `condensed` — the world
+/// has welded into blob(s) (2026-07-13 baseline sweep, finding 1). A mark
+/// for honest reading, never a penalty — fitness already declines to
+/// reward condensation.
+use genesis_observer::score::CONDENSED_MEAN_DEGREE;
 
 fn default_sigma() -> f32 {
     0.3
