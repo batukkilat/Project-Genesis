@@ -1,0 +1,28 @@
+(
+    id: "g008-i002",
+    parent: Some("g007-i000"),
+    ops: [
+        JitterRule(
+            rule: 5,
+            field: "radius",
+            old: 4.0,
+            new: 4.0066223,
+        ),
+        JitterConfig(
+            field: "physics.bond_rest_length",
+            old: 1.6642574,
+            new: 1.6070542,
+        ),
+        JitterRule(
+            rule: 6,
+            field: "transfer.information",
+            old: 0.0,
+            new: 0.001453839,
+        ),
+    ],
+    search_seed: 20260716,
+    generation: 8,
+    individual: 2,
+    config: "g008/g008-i002.config.ron",
+    rules: "g008/g008-i002.pack.ron",
+)
