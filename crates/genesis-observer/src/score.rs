@@ -68,6 +68,19 @@ pub struct RunScore {
     /// `persistence × complexity` over every (structure, sample) pair —
     /// long-lived *and* structured beats either alone.
     pub persistence_complexity: f64,
+    /// Late bond growth: bonds at the last sample over bonds at the
+    /// two-thirds sample (denominator floored at 1). Three searches in a
+    /// row the screen's top rank detonated just past the screen horizon;
+    /// accelerating bond growth in the final third is that signature,
+    /// visible before the detonation. Report-only — never fitness, never
+    /// selection. Neutral 1.0 for empty timelines and for records written
+    /// before the field existed (serde default).
+    #[serde(default = "neutral_growth")]
+    pub bonds_growth_late: f64,
+}
+
+fn neutral_growth() -> f64 {
+    1.0
 }
 
 impl RunScore {
@@ -94,6 +107,7 @@ impl RunScore {
             growing_structures: 0,
             growing_peak_confidence: 0.0,
             persistence_complexity: 0.0,
+            bonds_growth_late: neutral_growth(),
         }
     }
 
@@ -114,6 +128,10 @@ impl RunScore {
             largest_size_final: last.stats.largest_component,
             ..RunScore::zero()
         };
+        // Two-thirds by sample *index*: with a fixed cadence this is
+        // two-thirds of the observed horizon.
+        let base = samples[(2 * (samples.len() - 1)) / 3].stats.bonds;
+        score.bonds_growth_late = last.stats.bonds as f64 / base.max(1) as f64;
 
         let final_n = last.structures.len();
         if final_n > 0 {
@@ -291,6 +309,58 @@ mod tests {
             s.persistence_complexity, 12.0,
             "structure 1 at sample 1: 3 × 4.0"
         );
+        assert_eq!(
+            s.bonds_growth_late, 0.5,
+            "two samples: base is sample 0 (20 bonds), final is 10"
+        );
+    }
+
+    #[test]
+    fn bonds_growth_reads_the_final_third() {
+        let mut tl = Timeline::new(ObserverConfig::default());
+        for (i, bonds) in [10, 40, 100, 1000].iter().enumerate() {
+            tl.record(stats((i as u64 + 1) * 100, 50, *bonds, 0), vec![]);
+        }
+        // Four samples: base index (2·3)/3 = 2 → 100 bonds; 1000/100.
+        let s = RunScore::from_timeline(&tl);
+        assert_eq!(s.bonds_growth_late, 10.0);
+
+        // Zero bonds at the base: denominator floors at 1 instead of
+        // dividing by zero.
+        let mut tl = Timeline::new(ObserverConfig::default());
+        for (i, bonds) in [0, 0, 7].iter().enumerate() {
+            tl.record(stats((i as u64 + 1) * 100, 50, *bonds, 0), vec![]);
+        }
+        let s = RunScore::from_timeline(&tl);
+        assert_eq!(s.bonds_growth_late, 7.0);
+    }
+
+    #[test]
+    fn records_without_the_growth_field_load_neutral() {
+        // A pre-v1.2 record: serialize a current one, strip the field, and
+        // reparse — committed search-01..04 artifacts must keep loading.
+        let mut tl = Timeline::new(ObserverConfig::default());
+        tl.record(stats(10, 5, 2, 3), vec![row(1, 3, 1, 1.7, 0.4)]);
+        let record = ScoreRecord {
+            seed: 42,
+            ticks: 1000,
+            sample_every: 10,
+            state_hash: 1,
+            config: None,
+            rules: None,
+            actions: None,
+            score: RunScore::from_timeline(&tl),
+        };
+        let text = record.to_ron().unwrap();
+        let stripped: String = text
+            .lines()
+            .filter(|l| !l.contains("bonds_growth_late"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert_ne!(text, stripped, "the field must actually serialize");
+        let loaded = ScoreRecord::from_ron(&stripped).unwrap();
+        assert_eq!(loaded.score.bonds_growth_late, 1.0);
+        assert_eq!(loaded.score.bonds_final, record.score.bonds_final);
     }
 
     #[test]
