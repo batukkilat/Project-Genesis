@@ -1,0 +1,26 @@
+(
+    id: "g001-i006",
+    parent: Some("g000-i000"),
+    ops: [
+        DuplicateRule(
+            source: 3,
+            new_index: 11,
+            fields: [
+                ("transfer.energy", 0.0, 0.00028606385),
+                ("self_cond.energy.min", 0.11284788, 0.062093947),
+                ("transfer.information", 0.0021406082, 0.001878266),
+            ],
+        ),
+        DropRule(
+            rule: 5,
+        ),
+        DropRule(
+            rule: 4,
+        ),
+    ],
+    search_seed: 20260720,
+    generation: 1,
+    individual: 6,
+    config: "g001/g001-i006.config.ron",
+    rules: "g001/g001-i006.pack.ron",
+)

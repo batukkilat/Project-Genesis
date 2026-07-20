@@ -1,0 +1,28 @@
+(
+    id: "g001-i009",
+    parent: Some("g000-i000"),
+    ops: [
+        JitterRule(
+            rule: 10,
+            field: "other_cond.information.max",
+            old: 0.31742913,
+            new: 0.26233885,
+        ),
+        JitterConfig(
+            field: "physics.information_decay",
+            old: 0.013747369,
+            new: 0.015758997,
+        ),
+        RewireCondition(
+            rule: 4,
+            side: "self_cond",
+            from: "energy",
+            to: "matter",
+        ),
+    ],
+    search_seed: 20260720,
+    generation: 1,
+    individual: 9,
+    config: "g001/g001-i009.config.ron",
+    rules: "g001/g001-i009.pack.ron",
+)
