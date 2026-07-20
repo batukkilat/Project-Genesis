@@ -1,0 +1,27 @@
+(
+    id: "g006-i007",
+    parent: Some("g005-i008"),
+    ops: [
+        JitterConfig(
+            field: "initial.information.hi",
+            old: 1.0,
+            new: 0.6573802,
+        ),
+        JitterConfig(
+            field: "physics.bond_rest_length",
+            old: 1.1311404,
+            new: 0.942931,
+        ),
+        JitterRule(
+            rule: 5,
+            field: "bond_create.strength",
+            old: 2.0,
+            new: 3.0786116,
+        ),
+    ],
+    search_seed: 20260720,
+    generation: 6,
+    individual: 7,
+    config: "g006/g006-i007.config.ron",
+    rules: "g006/g006-i007.pack.ron",
+)
