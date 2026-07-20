@@ -1,0 +1,22 @@
+(
+    id: "g001-i004",
+    parent: Some("g000-i001"),
+    ops: [
+        DropRule(
+            rule: 8,
+        ),
+        JitterConfig(
+            field: "physics.attraction",
+            old: 6.0639524,
+            new: 5.1493955,
+        ),
+        DropRule(
+            rule: 4,
+        ),
+    ],
+    search_seed: 20260720,
+    generation: 1,
+    individual: 4,
+    config: "g001/g001-i004.config.ron",
+    rules: "g001/g001-i004.pack.ron",
+)

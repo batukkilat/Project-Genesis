@@ -1,0 +1,461 @@
+(
+    rules: [
+        (
+            radius: 5.345134,
+            self_cond: (
+                matter: (
+                    min: 0.5,
+                    max: inf,
+                ),
+                energy: (
+                    min: -inf,
+                    max: inf,
+                ),
+                information: (
+                    min: -inf,
+                    max: inf,
+                ),
+            ),
+            other_cond: (
+                matter: (
+                    min: -inf,
+                    max: inf,
+                ),
+                energy: (
+                    min: -inf,
+                    max: 0.2,
+                ),
+                information: (
+                    min: -inf,
+                    max: inf,
+                ),
+            ),
+            env_cond: [],
+            probability: 0.05,
+            transfer: (
+                matter: 0.00010650641,
+                energy: 0.0,
+                information: 0.0,
+            ),
+            bond_create: None,
+            bond_break: false,
+            info_copy: None,
+            emit: None,
+            absorb: true,
+        ),
+        (
+            radius: 3.1562276,
+            self_cond: (
+                matter: (
+                    min: 0.5,
+                    max: inf,
+                ),
+                energy: (
+                    min: -inf,
+                    max: inf,
+                ),
+                information: (
+                    min: -inf,
+                    max: inf,
+                ),
+            ),
+            other_cond: (
+                matter: (
+                    min: -inf,
+                    max: inf,
+                ),
+                energy: (
+                    min: -inf,
+                    max: inf,
+                ),
+                information: (
+                    min: -inf,
+                    max: 0.45,
+                ),
+            ),
+            env_cond: [
+                (
+                    field: 0,
+                    min: 0.6,
+                    max: 1.0,
+                ),
+            ],
+            probability: 0.05,
+            transfer: (
+                matter: 0.0013787932,
+                energy: 0.0007212689,
+                information: 0.0,
+            ),
+            bond_create: None,
+            bond_break: false,
+            info_copy: None,
+            emit: None,
+            absorb: true,
+        ),
+        (
+            radius: 5.9509726,
+            self_cond: (
+                matter: (
+                    min: 0.3,
+                    max: inf,
+                ),
+                energy: (
+                    min: 0.5,
+                    max: inf,
+                ),
+                information: (
+                    min: 0.6,
+                    max: inf,
+                ),
+            ),
+            other_cond: (
+                matter: (
+                    min: -inf,
+                    max: inf,
+                ),
+                energy: (
+                    min: -inf,
+                    max: inf,
+                ),
+                information: (
+                    min: -inf,
+                    max: inf,
+                ),
+            ),
+            env_cond: [],
+            probability: 0.02,
+            transfer: (
+                matter: 0.0,
+                energy: 0.0,
+                information: 0.0,
+            ),
+            bond_create: None,
+            bond_break: false,
+            info_copy: None,
+            emit: Some((
+                matter_frac: 0.5,
+                energy_frac: 0.5,
+                info_frac: 0.5,
+                offset: 1.5,
+            )),
+            absorb: false,
+        ),
+        (
+            radius: 6.0,
+            self_cond: (
+                matter: (
+                    min: -inf,
+                    max: inf,
+                ),
+                energy: (
+                    min: 0.11284788,
+                    max: inf,
+                ),
+                information: (
+                    min: 0.5583201,
+                    max: inf,
+                ),
+            ),
+            other_cond: (
+                matter: (
+                    min: -inf,
+                    max: inf,
+                ),
+                energy: (
+                    min: -inf,
+                    max: inf,
+                ),
+                information: (
+                    min: -inf,
+                    max: 0.5,
+                ),
+            ),
+            env_cond: [],
+            probability: 0.1,
+            transfer: (
+                matter: 0.0,
+                energy: 0.0,
+                information: 0.0021406082,
+            ),
+            bond_create: None,
+            bond_break: false,
+            info_copy: Some((
+                cost: 0.02,
+                noise: 0.1,
+            )),
+            emit: None,
+            absorb: false,
+        ),
+        (
+            radius: 4.0,
+            self_cond: (
+                matter: (
+                    min: -inf,
+                    max: inf,
+                ),
+                energy: (
+                    min: -inf,
+                    max: inf,
+                ),
+                information: (
+                    min: 0.5,
+                    max: inf,
+                ),
+            ),
+            other_cond: (
+                matter: (
+                    min: -inf,
+                    max: inf,
+                ),
+                energy: (
+                    min: -inf,
+                    max: inf,
+                ),
+                information: (
+                    min: 0.5,
+                    max: inf,
+                ),
+            ),
+            env_cond: [],
+            probability: 0.1,
+            transfer: (
+                matter: 0.0,
+                energy: 0.0,
+                information: 0.0,
+            ),
+            bond_create: Some((
+                strength: 2.0,
+            )),
+            bond_break: false,
+            info_copy: None,
+            emit: None,
+            absorb: false,
+        ),
+        (
+            radius: 4.0,
+            self_cond: (
+                matter: (
+                    min: 0.5,
+                    max: inf,
+                ),
+                energy: (
+                    min: -inf,
+                    max: inf,
+                ),
+                information: (
+                    min: -inf,
+                    max: inf,
+                ),
+            ),
+            other_cond: (
+                matter: (
+                    min: -inf,
+                    max: inf,
+                ),
+                energy: (
+                    min: -inf,
+                    max: inf,
+                ),
+                information: (
+                    min: -inf,
+                    max: 0.2,
+                ),
+            ),
+            env_cond: [],
+            probability: 0.05,
+            transfer: (
+                matter: 0.00062643224,
+                energy: 0.0008596521,
+                information: 0.0,
+            ),
+            bond_create: None,
+            bond_break: false,
+            info_copy: None,
+            emit: None,
+            absorb: true,
+        ),
+        (
+            radius: 2.2007675,
+            self_cond: (
+                matter: (
+                    min: 0.8519899,
+                    max: inf,
+                ),
+                energy: (
+                    min: -inf,
+                    max: inf,
+                ),
+                information: (
+                    min: -inf,
+                    max: inf,
+                ),
+            ),
+            other_cond: (
+                matter: (
+                    min: -inf,
+                    max: inf,
+                ),
+                energy: (
+                    min: -inf,
+                    max: inf,
+                ),
+                information: (
+                    min: -inf,
+                    max: 0.45,
+                ),
+            ),
+            env_cond: [
+                (
+                    field: 0,
+                    min: 0.6,
+                    max: 1.0,
+                ),
+            ],
+            probability: 0.05,
+            transfer: (
+                matter: 0.0006163234,
+                energy: 0.00041378976,
+                information: 0.0,
+            ),
+            bond_create: None,
+            bond_break: false,
+            info_copy: None,
+            emit: None,
+            absorb: true,
+        ),
+        (
+            radius: 4.0,
+            self_cond: (
+                matter: (
+                    min: 0.5,
+                    max: inf,
+                ),
+                energy: (
+                    min: -inf,
+                    max: inf,
+                ),
+                information: (
+                    min: -inf,
+                    max: inf,
+                ),
+            ),
+            other_cond: (
+                matter: (
+                    min: -inf,
+                    max: inf,
+                ),
+                energy: (
+                    min: -inf,
+                    max: inf,
+                ),
+                information: (
+                    min: 0.44736892,
+                    max: inf,
+                ),
+            ),
+            env_cond: [],
+            probability: 0.1,
+            transfer: (
+                matter: 0.0,
+                energy: 0.0027934972,
+                information: 0.0014687716,
+            ),
+            bond_create: Some((
+                strength: 2.0,
+            )),
+            bond_break: false,
+            info_copy: None,
+            emit: None,
+            absorb: false,
+        ),
+        (
+            radius: 7.1638975,
+            self_cond: (
+                matter: (
+                    min: -inf,
+                    max: inf,
+                ),
+                energy: (
+                    min: 0.11284788,
+                    max: inf,
+                ),
+                information: (
+                    min: 0.5583201,
+                    max: inf,
+                ),
+            ),
+            other_cond: (
+                matter: (
+                    min: -inf,
+                    max: 0.6450375,
+                ),
+                energy: (
+                    min: -inf,
+                    max: inf,
+                ),
+                information: (
+                    min: -inf,
+                    max: inf,
+                ),
+            ),
+            env_cond: [],
+            probability: 0.1,
+            transfer: (
+                matter: 0.0,
+                energy: 0.0015681769,
+                information: 0.0,
+            ),
+            bond_create: None,
+            bond_break: false,
+            info_copy: Some((
+                cost: 0.02,
+                noise: 0.1,
+            )),
+            emit: None,
+            absorb: false,
+        ),
+        (
+            radius: 5.345134,
+            self_cond: (
+                matter: (
+                    min: 0.9074476,
+                    max: inf,
+                ),
+                energy: (
+                    min: -inf,
+                    max: inf,
+                ),
+                information: (
+                    min: -inf,
+                    max: inf,
+                ),
+            ),
+            other_cond: (
+                matter: (
+                    min: -inf,
+                    max: inf,
+                ),
+                energy: (
+                    min: -inf,
+                    max: inf,
+                ),
+                information: (
+                    min: -inf,
+                    max: 0.31742913,
+                ),
+            ),
+            env_cond: [],
+            probability: 0.04520601,
+            transfer: (
+                matter: 0.00010650641,
+                energy: 0.0,
+                information: 0.002432366,
+            ),
+            bond_create: None,
+            bond_break: false,
+            info_copy: None,
+            emit: None,
+            absorb: true,
+        ),
+    ],
+)
