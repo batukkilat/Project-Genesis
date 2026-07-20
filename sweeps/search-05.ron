@@ -1,0 +1,74 @@
+// Search 05 — move the screen to the detonation horizon.
+//
+// Three consecutive searches ended the same way: the 3k screen's #1
+// (search-04: #1 AND #2) detonated in confirmation — bond blowup
+// scheduled wholly past the screen horizon. The cheap instrument fix (a
+// mid-screen bond-growth mark) was measured and REJECTED 2026-07-17
+// (Q-2026-07-17-A): at 3k the detonators' final-third bond growth is
+// indistinguishable from the honest champion's; the screen cannot see
+// what has not started. This run applies the only remaining lever that
+// needs no new instrument: screen where the detonation fires. Screen
+// 6000 ticks — the horizon at which every observed detonator has
+// already capped — with the 6k-scale cap (600k, search-04's
+// confirm_bond_cap) as the screen's own circuit breaker.
+//
+// Two questions from the search-04 findings ("parked observations"):
+// (a) does a 6k screen see through the delayed detonators the 3k screen
+//     kept crowning? Directly measured: the pool seeds the honest
+//     champion g008-i003 AGAINST both search-04 detonators (g008-i005,
+//     screen fitness 99.5 on a 2.1e11 information total; g008-i001,
+//     84.3). If the horizon hypothesis holds, both cap at g000 and are
+//     culled by selection immediately, with fitness 0 on the record.
+// (b) does the de-informationalizing rewire direction (search-04
+//     finding 3: RewireCondition moving information bounds onto
+//     matter/energy, found independently three times) persist when
+//     fitness samples information at 6k instead of 3k? Fitness is
+//     computed from the screen record, so a 6k screen IS the
+//     longer-horizon fitness the findings doc asked about — no fitness
+//     change, no instrument change.
+//
+// Instrument settings otherwise carried unchanged from search-02/-03/-04
+// (sigma 0.6, 3 ops/child, truncation top-3, confirm_top 3 — the
+// empirical floor after three straight screen-champion detonations).
+// Confirmation doubles the horizon again: 12k, cap scaled linearly to
+// 1.2M (the Q-2026-07-14-A per-horizon-cost rule).
+//
+// Budget: 3 seeds + 6 generations x 10 children = 63 evals at 6k. The
+// champion family holds ~20-30k bonds at 6k (leaderboard) so honest
+// screens cost roughly 1-2 min each on the 4-core cloud box; the two
+// detonator seeds cap somewhere past 600k bonds. Expect ~1.5-2.5 h,
+// plus three 12k confirms.
+//
+//   genesis search --spec sweeps/search-05.ron --out <dir>
+#![enable(implicit_some)]
+(
+    seed: 20260720,
+    generations: 6,
+    population: 10,
+    survivors: 3,
+    sigma: 0.6,
+    mutations_per_child: 3,
+    screen_ticks: 6000,
+    every: 100,
+    confirm_ticks: 12000,
+    confirm_top: 3,
+    bond_cap: 600000,
+    confirm_bond_cap: 1200000,
+    seeds: [
+        (
+            name: "champ-honest",
+            config: Some("docs/research/sweeps/2026-07-16-search-04/g008/g008-i003.config.ron"),
+            rules: "docs/research/sweeps/2026-07-16-search-04/g008/g008-i003.pack.ron",
+        ),
+        (
+            name: "detonator-1",
+            config: Some("docs/research/sweeps/2026-07-16-search-04/g008/g008-i005.config.ron"),
+            rules: "docs/research/sweeps/2026-07-16-search-04/g008/g008-i005.pack.ron",
+        ),
+        (
+            name: "detonator-2",
+            config: Some("docs/research/sweeps/2026-07-16-search-04/g008/g008-i001.config.ron"),
+            rules: "docs/research/sweeps/2026-07-16-search-04/g008/g008-i001.pack.ron",
+        ),
+    ],
+)
