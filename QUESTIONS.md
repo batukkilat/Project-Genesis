@@ -54,16 +54,25 @@ is the phase's owner-approved definition of success (2026-07-12), and
 the 2026-07-14 shift log explicitly reserved this for an owner-level
 look once evidence accumulated — it now has.
 
-**Update 2026-07-17.** The *measurement half* of option 2 shipped
-report-only (decisions log Q-2026-07-17-B): every new `RunScore`
-carries `persistence_complexity_bounded`, and the affordable 20 k
-subset (actual, sandbox, full-stack, chains, both discovered
-champions) plus the 3 k gate were re-scored to populate it — measured
-numbers in docs/research/sweeps/2026-07-17-bounded-headline.md. The
-decision itself stays parked: the exit criterion is still scored on
-the raw scalar; what changed is that choosing option 2 (or rejecting
-it) can now be done against a real bounded leaderboard instead of the
-anatomy doc's analytic ceilings.
+**Update 2026-07-17 (measurement completed 2026-07-20).** The
+*measurement half* of option 2 shipped report-only (decisions log
+Q-2026-07-17-B): every new `RunScore` carries
+`persistence_complexity_bounded`, and the affordable 20 k subset
+(actual, sandbox, full-stack, chains, both discovered champions) plus
+the 3 k gate were re-scored to populate it — measured numbers and the
+records themselves in docs/research/sweeps/2026-07-17-bounded-headline.md
+(all committed state hashes reproduced bit-for-bit). Headline numbers:
+`actual`, the raw bar at 3631.4, keeps only **474.0** when condensed
+rows are excluded (−87 %); the measured bounded bar becomes sandbox's
+**2178.5**, with the search-02 champion **3.3 % below it** (2106.6)
+and the search-04 champion at 1894.2 — i.e. under option 2 the exit
+criterion goes from provably-unreachable-honestly to contestable by
+the already-discovered regimes. bands and sieve stay unmeasured at
+20 k (cost); bands' row is the one number worth buying if option 2 is
+adopted. The decision itself stays parked: the exit criterion is
+still scored on the raw scalar; what changed is that choosing
+option 2 (or rejecting it) can now be done against a real bounded
+leaderboard instead of the anatomy doc's analytic ceilings.
 
 ## Q-2026-07-10-D — magnetic field: blocked on a radiation quantity
 
