@@ -1,0 +1,32 @@
+(
+    id: "g002-i006",
+    parent: Some("g001-i001"),
+    ops: [
+        RewireCondition(
+            rule: 1,
+            side: "self_cond",
+            from: "matter",
+            to: "information",
+        ),
+        DuplicateRule(
+            source: 0,
+            new_index: 9,
+            fields: [
+                ("self_cond.matter.min", 0.5, 0.28164664),
+                ("radius", 5.345134, 7.226271),
+                ("probability", 0.05, 0.055944484),
+            ],
+        ),
+        JitterRule(
+            rule: 6,
+            field: "radius",
+            old: 2.2007675,
+            new: 1.7283494,
+        ),
+    ],
+    search_seed: 20260720,
+    generation: 2,
+    individual: 6,
+    config: "g002/g002-i006.config.ron",
+    rules: "g002/g002-i006.pack.ron",
+)

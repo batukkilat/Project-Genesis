@@ -1,0 +1,30 @@
+(
+    id: "g002-i001",
+    parent: Some("g001-i000"),
+    ops: [
+        JitterConfig(
+            field: "initial.energy.lo",
+            old: 0.0,
+            new: 0.046852827,
+        ),
+        DuplicateRule(
+            source: 7,
+            new_index: 11,
+            fields: [
+                ("transfer.information", 0.0, 0.001702808),
+                ("transfer.energy", 0.00041378976, 0.00023108114),
+            ],
+        ),
+        RewireCondition(
+            rule: 10,
+            side: "other_cond",
+            from: "information",
+            to: "matter",
+        ),
+    ],
+    search_seed: 20260720,
+    generation: 2,
+    individual: 1,
+    config: "g002/g002-i001.config.ron",
+    rules: "g002/g002-i001.pack.ron",
+)
