@@ -439,7 +439,24 @@ Deliverables, in dependency order:
   headline 2 192.4 — below search-02's 2 421.6 and the condensing
   packs — while posting the highest fitness ever measured (106.97):
   fitness and the raw exit scalar now disagree on measured numbers,
-  the concrete form of Q-2026-07-15-A.
+  the concrete form of Q-2026-07-15-A. **Fifth run (search-05)
+  2026-07-20** (docs/research/sweeps/2026-07-20-search-05.md): the
+  screen moved to the detonation horizon — 6 k screens with the
+  6 k-scale cap (600 k) as the screen's own breaker, 12 k confirms at
+  1.2 M, search-04's honest champion racing both of its detonators
+  in one pool. Both detonators capped mid-screen at g000 (fitness 0,
+  culled at first selection); mutation re-discovered detonation six
+  times across g001–g004 and the screen killed every one
+  same-generation; the final two generations were cap-free. **All
+  three confirmations held — the first search whose screen #1
+  survived confirmation** (g005-i003: 970.22 at 12 k, fitness
+  152.61, bounded == raw). The de-informationalizing rewire of
+  search-04 reversed: it was a 3 k-horizon artifact, and 6 k-sampled
+  fitness instead drove information to clamp scale (structures
+  averaging ~0.76 × `information_max` per member) — recorded
+  instrument limit: past the clamp, fitness v1's information term
+  stops discriminating (a future fitness fork, parked in the
+  findings doc, no change made).
 - **Selection-pressure experiments**: **first pack shipped 2026-07-13**
   (`packs/sieve.ron` + `configs/sieve.ron`) — information gates survival
   (info-poor particles are absorbable), reproduction (emit requires an
