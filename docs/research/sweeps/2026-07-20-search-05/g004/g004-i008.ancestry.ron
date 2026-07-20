@@ -1,0 +1,31 @@
+(
+    id: "g004-i008",
+    parent: Some("g003-i003"),
+    ops: [
+        JitterConfig(
+            field: "initial.speed.hi",
+            old: 2.1893384,
+            new: 3.6972978,
+        ),
+        DuplicateRule(
+            source: 1,
+            new_index: 12,
+            fields: [
+                ("other_cond.information.max", 0.45, 0.39798227),
+                ("radius", 3.1562276, 2.7066064),
+                ("self_cond.matter.min", 0.5, 0.5092982),
+            ],
+        ),
+        JitterRule(
+            rule: 4,
+            field: "probability",
+            old: 0.05,
+            new: 0.08244887,
+        ),
+    ],
+    search_seed: 20260720,
+    generation: 4,
+    individual: 8,
+    config: "g004/g004-i008.config.ron",
+    rules: "g004/g004-i008.pack.ron",
+)

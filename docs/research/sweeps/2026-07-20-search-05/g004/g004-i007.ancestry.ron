@@ -1,0 +1,35 @@
+(
+    id: "g004-i007",
+    parent: Some("g003-i007"),
+    ops: [
+        DuplicateRule(
+            source: 2,
+            new_index: 11,
+            fields: [
+                ("transfer.energy", 0.0, 0.0013670563),
+                ("self_cond.energy.min", 0.11284788, 0.06598908),
+                ("info_copy.cost", 0.02, 0.018063629),
+            ],
+        ),
+        DuplicateRule(
+            source: 7,
+            new_index: 12,
+            fields: [
+                ("radius", 4.0, 2.2472565),
+                ("transfer.energy", 0.0027934972, 0.0024089427),
+                ("transfer.information", 0.0014687716, 0.0024558948),
+            ],
+        ),
+        RewireCondition(
+            rule: 0,
+            side: "self_cond",
+            from: "matter",
+            to: "energy",
+        ),
+    ],
+    search_seed: 20260720,
+    generation: 4,
+    individual: 7,
+    config: "g004/g004-i007.config.ron",
+    rules: "g004/g004-i007.pack.ron",
+)
