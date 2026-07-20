@@ -1,0 +1,28 @@
+(
+    id: "g006-i001",
+    parent: Some("g005-i008"),
+    ops: [
+        JitterConfig(
+            field: "physics.repulsion",
+            old: 40.0,
+            new: 24.137104,
+        ),
+        DuplicateRule(
+            source: 7,
+            new_index: 13,
+            fields: [
+                ("transfer.energy", 0.00041378976, 0.00054979546),
+                ("transfer.information", 0.0, 0.0018279174),
+                ("transfer.matter", 0.0006163234, 0.0011109351),
+            ],
+        ),
+        DropRule(
+            rule: 5,
+        ),
+    ],
+    search_seed: 20260720,
+    generation: 6,
+    individual: 1,
+    config: "g006/g006-i001.config.ron",
+    rules: "g006/g006-i001.pack.ron",
+)

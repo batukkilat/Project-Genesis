@@ -1,0 +1,30 @@
+(
+    id: "g005-i005",
+    parent: Some("g004-i003"),
+    ops: [
+        JitterRule(
+            rule: 4,
+            field: "self_cond.energy.min",
+            old: 0.5,
+            new: 0.6675808,
+        ),
+        DuplicateRule(
+            source: 0,
+            new_index: 13,
+            fields: [
+                ("transfer.matter", 0.00010650641, 0.0001473275),
+                ("probability", 0.05, 0.053332653),
+            ],
+        ),
+        JitterConfig(
+            field: "initial.matter.lo",
+            old: 0.1544018,
+            new: 0.11842071,
+        ),
+    ],
+    search_seed: 20260720,
+    generation: 5,
+    individual: 5,
+    config: "g005/g005-i005.config.ron",
+    rules: "g005/g005-i005.pack.ron",
+)
