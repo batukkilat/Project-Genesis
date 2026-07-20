@@ -5,6 +5,112 @@ owner: full technical vocabulary, explained rather than simplified.
 
 ---
 
+## 2026-07-20 — cloud night shift 1 (Fable)
+
+Commits: `842da05` (search-05 spec), `da95916` (bounded-headline 20 k
+half), in-flight checkpoints `7c29c7a` → `f4bc00f` → per-generation
+commits, and the closing commit (search-05 findings doc + champion 20 k
+record + ROADMAP + this entry). One session-hygiene note first: the
+2026-07-17 shift's fourteen commits *were* on origin all along — this
+box's clone carried a stale `origin/main` ref that made them look
+unpushed until the first fetch. Nothing was lost; the scare cost five
+minutes and confirmed the push discipline works.
+
+**What changed and why.** Two units. **Unit 1** finished the work the
+2026-07-17 container cut left mid-flight: the six affordable 20 k
+re-scores that populate `persistence_complexity_bounded` — the
+bounded-degree headline that ignores any (structure, sample) row whose
+mean bond degree exceeds the condensation mark of 50. The results turn
+the anatomy doc's analytic argument into measured fact: `actual`, the
+raw exit bar at 3 631.4, keeps only 474.0 when its welded rows are
+excluded — 87 % of the highest headline ever recorded is condensation
+premium — while every honest pack keeps its raw value to the last
+digit, and the measured bounded bar becomes sandbox's 2 178.5 with the
+search-02 champion 3.3 % below it. In plain terms: under the current
+criterion the discovered regimes provably cannot win without welding;
+under option 2's bounded criterion they are already within reach.
+Q-2026-07-15-A now has its complete evidence base and the owner was
+notified. **Unit 2** ran search-05, the spec answer to three straight
+searches whose screen champion detonated in confirmation: move the
+screen itself to 6 000 ticks — the horizon where every observed
+detonation has already fired — with the 6 k-scale bond cap as the
+screen's breaker, and confirm at 12 k. The pool raced search-04's
+honest champion against both of its detonators. Generation 0 settled
+question (a): both detonators blew the 600 k cap mid-screen (1.1 M and
+0.96 M bonds), took fitness 0, and were culled at the first selection;
+mutation then re-invented detonation six more times across g001–g004
+and the screen killed each one the generation it appeared; the last
+twenty children were all honest. All three confirmations held — the
+first search in program history whose screen #1 survived confirmation
+(g005-i003: 970.22 at 12 k, bounded == raw). Question (b) reversed
+search-04's headline finding: the de-informationalizing rewire was a
+3 k-horizon artifact. With fitness sampling at 6 k, evolution drove
+information to clamp scale instead (structures averaging ~76 % of
+`information_max` per member), the rewires now point both directions,
+and decomposing fitness v1 shows the entire +47 % screen-fitness leap
+is the information term — which is now saturating (ln ln compresses
+10³⁰ → 10³³ into ~4 % of fitness). That saturation is recorded as a
+known instrument limit, parked, no change made. The champion's 20 k
+evaluation extends the central tension by one more point: fitness
+159.16 (highest ever, +49 % over search-04) on a raw headline of
+1 699.3 (lower than both prior champions) — three searches running,
+fitness rises while the exit scalar falls.
+
+**How it was proven.** Unit 1: all six 20 k re-runs reproduced their
+committed state hashes bit-for-bit (stamps in the records; the RON
+artifacts are committed beside the findings doc), which is the on-line
+proof the new report field cannot touch a simulated bit — the observer
+reads snapshots and the universe it read is byte-identical to the one
+scored before the field existed. Unit 2: the search is a pure function
+of (spec, build); its 66 state hashes are committed in the artifacts,
+and the honest champion's g000 screen reproduced its search-04 6 k
+confirmation hash exactly (13568336807438958782, fitness 94.80,
+28 520 bonds) across different builds and different search runs — the
+determinism contract observed working across sessions. Wind-down:
+workspace tests green, clippy clean, fmt clean. `genesis verify` was
+not run: no simulation code changed this session (docs, RON specs, and
+RON records only), so there is no new replay-identity surface to
+verify. What these proofs cannot catch: they validate determinism and
+report-consistency, not scientific interpretation — the finding-3/4
+claims (horizon artifact, term saturation) rest on one search per
+horizon, not a controlled sweep over horizons.
+
+**What to watch.** (1) g004-i004 screened honest at 482 k bonds —
+under the cap while visibly condensing. A regime scheduled to detonate
+at 8 k would pass this 6 k screen exactly as the 3 k detonators passed
+theirs; the horizon race is mitigated by the 2× confirmation, not won.
+(2) The clamp-saturated information totals mean fitness v1's
+information term no longer separates information-rich regimes from
+each other at 6 k+ horizons; any future search that wants to climb
+information should expect a plateau there, and the parked
+saturation-aware-fitness fork is the recorded escape. (3) The
+champion's 12 k → 20 k trajectory stays honest, but nothing has been
+confirmed past 20 k; the corpus horizon itself is a screen at some
+larger scale. (4) bands and sieve still have no 20 k bounded value
+(cost); bands' row is the one number worth buying if the owner adopts
+option 2.
+
+**Concept of the shift: a measurement horizon is part of the
+instrument.** Every number this project reports is taken at some tick
+count, and this shift showed three ways that choice *is* the
+measurement. The 3 k screen crowned three detonators because their
+detonation was scheduled past 3 000 ticks — the screen wasn't wrong,
+it was answering a different question than the 6 k confirmation was.
+Search-04 concluded evolution deletes information preconditions;
+sampled at 6 k, evolution does the opposite — both findings are true
+*at their horizon*, and neither is true simpliciter. And the raw
+exit scalar rewards condensation partly because condensation is what
+20 000 ticks of bond accumulation looks like — the leaderboard is a
+function of when you stop the clock. The general lesson for anyone
+maintaining this codebase: a deterministic engine makes runs exactly
+reproducible, but *comparable* only at matched horizons, which is why
+every ScoreRecord stamps its tick count and cadence, why the corpus
+gate and baseline live at fixed horizons (3 k / 20 k), and why any
+claim of the form "regime A beats regime B" is meaningless until you
+append "at N ticks."
+
+---
+
 ## 2026-07-17 — cloud night shift 1 (Fable); also logs the cut-off 2026-07-16 shift
 
 The 2026-07-16 shift was cut off by a container restart mid-run and
